@@ -1,0 +1,82 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-base: #14110F;
+  --surface-base: #1C1714;
+  --surface-elevated: #261E19;
+  --color-primary: #D39A5B;
+  --color-primary-hover: #B87F42;
+  --color-secondary: #E7C9A5;
+  --color-tertiary: #8C5A2B;
+  --text-main: #F2E8DC;
+  --text-sub: #9D8C7C;
+  --text-faint: #6E5F52;
+  --border-subtle: #2C241E;
+  --border-accent: #453324;
+}
+
+/* Chế độ nền Reader Theme */
+.reader-theme-dark {
+  background-color: #14110F !important;
+  color: #F2E8DC !important;
+}
+
+.reader-theme-sepia {
+  background-color: #F4ECE1 !important;
+  color: #2D2319 !important;
+}
+
+.reader-theme-light {
+  background-color: #FAF7F2 !important;
+  color: #1C1714 !important;
+}
+
+html,
+body {
+  background-color: var(--bg-base);
+  color: var(--text-main);
+  min-height: 100%;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+  touch-action: manipulation;
+}
+
+/* Safe area padding utilities */
+.safe-pb {
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+}
+
+.safe-pt {
+  padding-top: max(12px, env(safe-area-inset-top));
+}
+
+/* Custom warm scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #14110F;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2C241E;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #D39A5B;
+}
+
+/* Ẩn scrollbar nhưng vẫn cuộn được trên mobile */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

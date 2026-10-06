@@ -1,0 +1,62 @@
+0 verbose cli C:\node.exe C:\node_modules\npm\bin\npm-cli.js
+1 info using npm@11.17.0
+2 info using node@v24.19.0
+3 silly config load:file:C:\node_modules\npm\npmrc
+4 silly config load:file:D:\Vibecode\webtruyen\.npmrc
+5 silly config load:file:C:\Users\Main\.npmrc
+6 silly config load:file:C:\Users\Main\AppData\Roaming\npm\etc\npmrc
+7 verbose title npm exec playwright-cli --help
+8 verbose argv "exec" "--cache" "output/playwright/npm-cache" "--package" "@playwright/cli" "--" "playwright-cli" "--help"
+9 verbose logfile logs-max:10 dir:D:\Vibecode\webtruyen\output\playwright\npm-cache\_logs\2026-10-04T03_09_35_353Z-
+10 verbose logfile D:\Vibecode\webtruyen\output\playwright\npm-cache\_logs\2026-10-04T03_09_35_353Z-debug-0.log
+11 silly logfile done cleaning log files
+12 silly packumentCache heap:2348810240 maxSize:587202560 maxEntrySize:293601280
+13 verbose shrinkwrap failed to load node_modules/.package-lock.json out of date, updated: node_modules/prisma
+14 http fetch GET 200 https://registry.npmjs.org/@playwright%2fcli 182ms (cache miss)
+15 silly packumentCache heap:2348810240 maxSize:587202560 maxEntrySize:293601280
+16 warn exec The following package was not found and will be installed: @playwright/cli@0.1.22
+17 silly idealTree buildDeps
+18 silly fetch manifest @playwright/cli@0.1.22
+19 silly packumentCache full:https://registry.npmjs.org/@playwright%2fcli cache-miss
+20 http fetch GET 200 https://registry.npmjs.org/npm 329ms
+21 http fetch GET 200 https://registry.npmjs.org/@playwright%2fcli 85ms (cache miss)
+22 silly packumentCache full:https://registry.npmjs.org/@playwright%2fcli set size:undefined disposed:false
+23 silly placeDep ROOT @playwright/cli@0.1.22 OK for:  want: 0.1.22
+24 silly fetch manifest playwright@1.64.0-alpha-1790635538000
+25 silly packumentCache full:https://registry.npmjs.org/playwright cache-miss
+26 silly fetch manifest playwright-core@1.64.0-alpha-1790635538000
+27 silly packumentCache full:https://registry.npmjs.org/playwright-core cache-miss
+28 http fetch GET 200 https://registry.npmjs.org/playwright 413ms (cache miss)
+29 silly packumentCache full:https://registry.npmjs.org/playwright set size:undefined disposed:false
+30 http fetch GET 200 https://registry.npmjs.org/playwright-core 626ms (cache miss)
+31 silly packumentCache full:https://registry.npmjs.org/playwright-core set size:undefined disposed:false
+32 silly placeDep ROOT playwright@1.64.0-alpha-1790635538000 OK for: @playwright/cli@0.1.22 want: 1.64.0-alpha-1790635538000
+33 silly placeDep ROOT playwright-core@1.64.0-alpha-1790635538000 OK for: @playwright/cli@0.1.22 want: 1.64.0-alpha-1790635538000
+34 silly reify moves {}
+35 silly audit bulk request {
+35 silly audit   '@playwright/cli': [ '0.1.22' ],
+35 silly audit   playwright: [ '1.64.0-alpha-1790635538000' ],
+35 silly audit   'playwright-core': [ '1.64.0-alpha-1790635538000' ]
+35 silly audit }
+36 http cache playwright-core@https://registry.npmjs.org/playwright-core/-/playwright-core-1.64.0-alpha-1790635538000.tgz 0ms (cache hit)
+37 http cache playwright@https://registry.npmjs.org/playwright/-/playwright-1.64.0-alpha-1790635538000.tgz 0ms (cache hit)
+38 http cache @playwright/cli@https://registry.npmjs.org/@playwright/cli/-/cli-0.1.22.tgz 0ms (cache hit)
+39 silly tarball no local data for playwright-core@https://registry.npmjs.org/playwright-core/-/playwright-core-1.64.0-alpha-1790635538000.tgz. Extracting by manifest.
+40 silly tarball no local data for playwright@https://registry.npmjs.org/playwright/-/playwright-1.64.0-alpha-1790635538000.tgz. Extracting by manifest.
+41 silly tarball no local data for @playwright/cli@https://registry.npmjs.org/@playwright/cli/-/cli-0.1.22.tgz. Extracting by manifest.
+42 http fetch POST 200 https://registry.npmjs.org/-/npm/v1/security/advisories/bulk 199ms
+43 silly audit report {}
+44 http fetch GET 200 https://registry.npmjs.org/@playwright/cli/-/cli-0.1.22.tgz 240ms (cache miss)
+45 http fetch GET 200 https://registry.npmjs.org/playwright-core/-/playwright-core-1.64.0-alpha-1790635538000.tgz 391ms (cache miss)
+46 http fetch GET 200 https://registry.npmjs.org/playwright/-/playwright-1.64.0-alpha-1790635538000.tgz 415ms (cache miss)
+47 verbose cwd D:\Vibecode\webtruyen
+48 verbose os Windows_NT 10.0.26200
+49 verbose node v24.19.0
+50 verbose npm  v11.17.0
+51 notice
+51 notice New major version of npm available! 11.17.0 -> 12.2.0
+51 notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+51 notice To update run: npm install -g npm@12.2.0
+51 notice  { force: true, Symbol(proc-log.meta): true }
+52 verbose exit -1073740791
+53 verbose code -1073740791

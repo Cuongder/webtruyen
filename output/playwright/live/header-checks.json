@@ -1,0 +1,98 @@
+[
+  {
+    "clipped": [],
+    "header": {
+      "bottom": 56,
+      "height": 56
+    },
+    "pass": true,
+    "viewport": {
+      "height": 884,
+      "width": 320
+    }
+  },
+  {
+    "clipped": [],
+    "header": {
+      "bottom": 56,
+      "height": 56
+    },
+    "pass": true,
+    "viewport": {
+      "height": 884,
+      "width": 375
+    }
+  },
+  {
+    "clipped": [],
+    "header": {
+      "bottom": 56,
+      "height": 56
+    },
+    "pass": true,
+    "viewport": {
+      "height": 884,
+      "width": 390
+    }
+  },
+  {
+    "clipped": [],
+    "header": {
+      "bottom": 56,
+      "height": 56
+    },
+    "pass": true,
+    "viewport": {
+      "height": 884,
+      "width": 599
+    }
+  },
+  {
+    "clipped": [],
+    "header": {
+      "bottom": 113,
+      "height": 113
+    },
+    "pass": true,
+    "viewport": {
+      "height": 884,
+      "width": 600
+    }
+  },
+  {
+    "clipped": [],
+    "header": {
+      "bottom": 113,
+      "height": 113
+    },
+    "pass": true,
+    "viewport": {
+      "height": 884,
+      "width": 768
+    }
+  },
+  {
+    "clipped": [],
+    "header": {
+      "bottom": 65,
+      "height": 65
+    },
+    "pass": true,
+    "viewport": {
+      "height": 884,
+      "width": 1024
+    }
+  },
+  {
+    "clipped": [],
+    "header": {
+      "bottom": 65,
+      "height": 65
+    },
+    "pass": true,
+    "viewport": {
+      "height": 884,
+      "width": 1440
+    }
+  }
+]
