@@ -28,7 +28,8 @@ Tài liệu này cung cấp đặc tả kỹ thuật chi tiết, quy chuẩn tru
 
 ## 1. Tổng quan Kiến trúc & Nguyên tắc Thiết kế
 
-* **Base URL**: `http://localhost:3000` (hoặc `http://localhost:3001` tùy môi trường máy chủ cục bộ).
+* **Production URL (Vercel)**: `https://webtruyen-eta.vercel.app`
+* **Local Base URL**: `http://localhost:3000` (hoặc `http://localhost:3001` tùy môi trường máy chủ cục bộ).
 * **Kiến trúc**: Next.js 15+ App Router Route Handlers (`src/app/api/...`).
 * **Định dạng dữ liệu**: `application/json` chuẩn UTF-8 (hỗ trợ hiển thị tiếng Việt có dấu đầy đủ).
 * **Tự động đếm từ**: Các API đăng nội dung chương tích hợp bộ đếm từ tiếng Việt chuẩn mực theo khoảng trắng Unicode.
@@ -401,7 +402,7 @@ Content-Type: application/json
 
 #### A. Gọi API Tạo truyện mới:
 ```bash
-curl -X POST http://localhost:3000/api/admin/stories \
+curl -X POST https://webtruyen-eta.vercel.app/api/admin/stories \
   -H "Content-Type: application/json" \
   -H "x-api-key: mocthu_live_admin_key_2026_vibecode_998877" \
   -d '{
@@ -418,7 +419,7 @@ curl -X POST http://localhost:3000/api/admin/stories \
 
 #### B. Gọi API Đăng chương mới:
 ```bash
-curl -X POST http://localhost:3000/api/admin/chapters \
+curl -X POST https://webtruyen-eta.vercel.app/api/admin/chapters \
   -H "Content-Type: application/json" \
   -H "x-api-key: mocthu_live_admin_key_2026_vibecode_998877" \
   -d '{
@@ -434,10 +435,10 @@ curl -X POST http://localhost:3000/api/admin/chapters \
 ```bash
 # Lấy mã khóa hiện hành:
 curl -H "x-api-key: mocthu_live_admin_key_2026_vibecode_998877" \
-  http://localhost:3000/api/admin/api-key
+  https://webtruyen-eta.vercel.app/api/admin/api-key
 
 # Sinh lại mã khóa ngẫu nhiên mới:
-curl -X POST http://localhost:3000/api/admin/api-key \
+curl -X POST https://webtruyen-eta.vercel.app/api/admin/api-key \
   -H "Content-Type: application/json" \
   -H "x-api-key: mocthu_live_admin_key_2026_vibecode_998877" \
   -d '{"action": "regenerate"}'
@@ -449,7 +450,7 @@ curl -X POST http://localhost:3000/api/admin/api-key \
 
 ```typescript
 const ADMIN_API_KEY = "mocthu_live_admin_key_2026_vibecode_998877";
-const BASE_URL = "http://localhost:3000";
+const BASE_URL = "https://webtruyen-eta.vercel.app"; // hoặc "http://localhost:3000" khi test local
 
 async function adminWorkflow() {
   // 1. Tạo truyện mới trực tiếp bằng API Key
@@ -505,7 +506,7 @@ adminWorkflow().catch(console.error);
 ```python
 import requests
 
-BASE_URL = "http://localhost:3000"
+BASE_URL = "https://webtruyen-eta.vercel.app"  # hoặc "http://localhost:3000" khi test local
 ADMIN_API_KEY = "mocthu_live_admin_key_2026_vibecode_998877"
 
 headers = {
