@@ -5,9 +5,10 @@
   "description": "Mộc Thư - Nền tảng đọc và sáng tác truyện chữ Mobile First tiếng Việt",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
     "lint": "next lint",
+    "postinstall": "prisma generate",
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push",
     "prisma:seed": "node --loader ts-node/esm prisma/seed.ts || ts-node prisma/seed.ts"
