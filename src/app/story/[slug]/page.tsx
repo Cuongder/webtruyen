@@ -17,13 +17,14 @@ import { MobileHeader } from "@/components/navigation/MobileHeader";
 import { DesktopHeader } from "@/components/navigation/DesktopHeader";
 import { BottomNavigation } from "@/components/navigation/BottomNavigation";
 import {
-  STORIES_DATA,
-  CHAPTERS_DATA,
-  COMMENTS_DATA,
-} from "@/lib/data-store";
+  getPublicStory,
+} from "@/lib/read-model";
+import { db } from "@/lib/db";
 import { formatNumber, formatRelativeTime } from "@/lib/utils";
 import { getSession } from "@/lib/auth";
 import { AddToLibraryButton } from "@/components/story/StoryActions";
+
+export const dynamic = "force-dynamic";
 
 interface StoryDetailPageProps {
   params: Promise<{ slug: string }>;
@@ -31,19 +32,31 @@ interface StoryDetailPageProps {
 
 export default async function StoryDetailPage({ params }: StoryDetailPageProps) {
   const { slug } = await params;
-  const story = STORIES_DATA.find((s) => s.slug === slug);
-
-  if (!story) {
+  const publicStory = await getPublicStory(slug);
+  if (!publicStory) {
     notFound();
   }
 
   const session = await getSession();
-  const chapters = CHAPTERS_DATA[slug] || [];
-  const comments = COMMENTS_DATA[slug] || [];
+  const story = publicStory.story;
+  const chapters = publicStory.chapters;
+  const comments = await db.comment.findMany({
+    where: { storyId: story.id, chapterId: null },
+    orderBy: { createdAt: "desc" },
+    take: 50,
+    include: {
+      user: {
+        select: {
+          username: true,
+          profile: { select: { displayName: true, avatarUrl: true } },
+        },
+      },
+    },
+  });
   const firstChapter = chapters[0];
 
   return (
-    <div className="flex min-h-screen flex-col bg-bg-base text-ink-primary pb-28 md:pb-12">
+    <div className="flex min-h-screen flex-col bg-bg-base text-ink-primary pb-36 md:pb-12">
       <MobileHeader user={session} />
       <DesktopHeader user={session} />
 
@@ -157,7 +170,7 @@ export default async function StoryDetailPage({ params }: StoryDetailPageProps) 
                     <span>Đọc ngay (Chương 1)</span>
                   </Link>
                 )}
-                <AddToLibraryButton storyTitle={story.title} variant="full" />
+                <AddToLibraryButton storyId={story.id} storySlug={story.slug} storyTitle={story.title} variant="full" />
               </div>
             </div>
           </div>
@@ -244,12 +257,12 @@ export default async function StoryDetailPage({ params }: StoryDetailPageProps) 
                   <div className="flex items-center gap-2">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                      src={comment.authorAvatar}
-                      alt={comment.authorName}
+                      src={comment.user.profile?.avatarUrl || ""}
+                      alt={comment.user.profile?.displayName || comment.user.username}
                       className="h-6 w-6 rounded-full object-cover"
                     />
                     <span className="text-xs font-semibold text-ink-primary">
-                      {comment.authorName}
+                      {comment.user.profile?.displayName || comment.user.username}
                     </span>
                   </div>
                   <span className="text-[10px] text-ink-muted">
@@ -258,44 +271,27 @@ export default async function StoryDetailPage({ params }: StoryDetailPageProps) 
                 </div>
 
                 <p className="mt-2 text-xs leading-relaxed text-ink-secondary">
-                  {comment.content}
+                    {comment.content}
                 </p>
 
-                {/* Author replies */}
-                {comment.replies?.map((reply) => (
-                  <div
-                    key={reply.id}
-                    className="mt-3 ml-4 rounded-lg border-l-2 border-accent-gold bg-surface p-2.5"
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[11px] font-semibold text-accent-gold">
-                        {reply.authorName}
-                      </span>
-                      <span className="rounded bg-accent-gold/15 px-1 py-0.2 text-[9px] font-bold text-accent-gold">
-                        Tác giả
-                      </span>
-                    </div>
-                    <p className="mt-1 text-xs text-ink-secondary">{reply.content}</p>
-                  </div>
-                ))}
               </div>
             ))}
           </div>
         </section>
       </main>
 
-      {/* Sticky Bottom Bar on Mobile */}
-      <div className="fixed bottom-0 left-0 right-0 z-30 flex items-center gap-2 border-t border-border-accent bg-surface/95 px-4 py-3 backdrop-blur-md safe-pb sm:hidden shadow-2xl">
+      {/* Sticky Bottom Bar on Mobile - lifted above BottomNavigation (h-16 = 64px) */}
+      <div className="fixed bottom-16 left-0 right-0 z-30 flex items-center gap-2 border-t border-border-accent bg-surface/95 px-4 py-2.5 backdrop-blur-md md:hidden shadow-2xl">
         {firstChapter && (
           <Link
             href={`/story/${story.slug}/chapter/${firstChapter.slug}`}
-            className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-accent-gold py-3 text-xs font-bold text-bg-base shadow-md active:scale-95"
+            className="flex flex-1 min-h-[44px] items-center justify-center gap-2 rounded-xl bg-accent-gold py-2.5 text-xs font-bold text-bg-base shadow-md active:scale-95"
           >
             <BookOpen className="h-4 w-4" />
             <span>Đọc ngay (Chương 1)</span>
           </Link>
         )}
-        <AddToLibraryButton storyTitle={story.title} variant="icon" />
+        <AddToLibraryButton storyId={story.id} storySlug={story.slug} storyTitle={story.title} variant="icon" />
       </div>
 
       <BottomNavigation userRole={session?.role} />

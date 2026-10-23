@@ -7,11 +7,14 @@
     "dev": "next dev",
     "build": "prisma generate && next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "tsc --noEmit --incremental false",
     "postinstall": "prisma generate",
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push",
-    "prisma:seed": "node --loader ts-node/esm prisma/seed.ts || ts-node prisma/seed.ts"
+    "prisma:migrate:deploy": "prisma migrate deploy",
+    "prisma:seed": "ts-node --project tsconfig.seed.json prisma/seed.ts",
+    "test:qa": "node --test tests/release-contract.test.mjs",
+    "smoke:check": "node scripts/smoke-check.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.4.1",

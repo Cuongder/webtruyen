@@ -1,174 +1,111 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { verifyAdminRequest } from "@/lib/auth";
-import {
-  STORIES_DATA,
-  getUserById,
-  adminCreateStory,
-  type StoryItem,
-} from "@/lib/data-store";
+import { requireAdminContext, writeAdminAudit } from "@/lib/admin";
+import { createStory, findStories } from "@/lib/repositories/story.repository";
+import { serializeStory } from "@/lib/story-mapper";
+import { db } from "@/lib/db";
 
 export async function GET(req: NextRequest) {
-  const auth = await verifyAdminRequest(req);
-  if (!auth.authorized) {
-    return NextResponse.json({ error: auth.error || "Yêu cầu quyền Quản trị viên!" }, { status: 403 });
-  }
+  const context = await requireAdminContext(req);
+  if ("response" in context) return context.response;
 
-  const { searchParams } = new URL(req.url);
-  const search = searchParams.get("q")?.toLowerCase();
-  const genre = searchParams.get("genre");
-  const status = searchParams.get("status");
-  const featured = searchParams.get("featured");
-
-  let list = [...STORIES_DATA];
-
-  if (search) {
-    list = list.filter(
-      (s) =>
-        s.title.toLowerCase().includes(search) ||
-        s.authorName.toLowerCase().includes(search) ||
-        s.authorPenName.toLowerCase().includes(search)
-    );
-  }
-
-  if (genre) {
-    list = list.filter((s) => s.genres.some((g) => g.toLowerCase() === genre.toLowerCase()));
-  }
-
-  if (status) {
-    list = list.filter((s) => s.status === status);
-  }
-
-  if (featured !== null && featured !== undefined) {
-    list = list.filter((s) => s.featured === (featured === "true"));
-  }
+  const params = new URL(req.url).searchParams;
+  const result = await findStories({
+    search: params.get("q") || undefined,
+    genre: params.get("genre") || undefined,
+    status:
+      params.get("status") === "DRAFT" ||
+      params.get("status") === "ONGOING" ||
+      params.get("status") === "COMPLETED" ||
+      params.get("status") === "HIATUS"
+        ? params.get("status") as "DRAFT" | "ONGOING" | "COMPLETED" | "HIATUS"
+        : undefined,
+    visibility:
+      params.get("visibility") === "PRIVATE" ||
+      params.get("visibility") === "UNLISTED" ||
+      params.get("visibility") === "PUBLIC"
+        ? params.get("visibility") as "PRIVATE" | "UNLISTED" | "PUBLIC"
+        : undefined,
+    featured: params.has("featured") ? params.get("featured") === "true" : undefined,
+  });
 
   return NextResponse.json({
     success: true,
-    total: list.length,
-    stories: list,
+    total: result.total,
+    stories: result.stories.map(serializeStory),
   });
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const auth = await verifyAdminRequest(req);
-    if (!auth.authorized) {
-      return NextResponse.json({ error: auth.error || "Yêu cầu quyền Quản trị viên!" }, { status: 403 });
-    }
+    const context = await requireAdminContext(req);
+    if ("response" in context) return context.response;
 
     const body = await req.json();
-    const {
+    const title = typeof body.title === "string" ? body.title.trim() : "";
+    const shortDescription =
+      typeof body.shortDescription === "string" ? body.shortDescription.trim() : "";
+    if (!title || !shortDescription) {
+      return NextResponse.json({ error: "Thiếu tiêu đề hoặc mô tả ngắn." }, { status: 400 });
+    }
+
+    const authorId =
+      typeof body.authorId === "string" && body.authorId
+        ? body.authorId
+        : context.adminId;
+    const author = await db.user.findUnique({
+      where: { id: authorId },
+      select: { id: true },
+    });
+    if (!author) return NextResponse.json({ error: "Không tìm thấy tác giả." }, { status: 404 });
+
+    const slug =
+      typeof body.slug === "string" && body.slug.trim()
+        ? body.slug.trim()
+        : `${title.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[đĐ]/g, "d").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")}-${Date.now().toString().slice(-5)}`;
+
+    const story = await createStory({
       title,
       slug,
-      authorMode = "CUSTOM", // "EXISTING_USER" | "CUSTOM"
-      authorId,
-      authorName,
-      authorPenName,
-      authorAvatar,
-      genres = [],
-      tags = [],
+      authorId: author.id,
       shortDescription,
-      fullDescription,
-      coverUrl,
-      status = "ONGOING",
-      featured = false,
-    } = body;
+      fullDescription:
+        typeof body.fullDescription === "string" ? body.fullDescription.trim() : shortDescription,
+      coverUrl:
+        typeof body.coverUrl === "string" && body.coverUrl.trim()
+          ? body.coverUrl.trim()
+          : "",
+      status:
+        body.status === "DRAFT" ||
+        body.status === "COMPLETED" ||
+        body.status === "HIATUS"
+          ? body.status
+          : "ONGOING",
+      visibility:
+        body.visibility === "PRIVATE" || body.visibility === "UNLISTED"
+          ? body.visibility
+          : "PUBLIC",
+      featured: Boolean(body.featured),
+      genreSlugs: Array.isArray(body.genres) ? body.genres : [],
+      tags: Array.isArray(body.tags) ? body.tags : [],
+    });
 
-    // Validate required fields
-    if (!title || !title.trim()) {
-      return NextResponse.json(
-        { error: "Vui lòng nhập tên tác phẩm!" },
-        { status: 400 }
-      );
-    }
-
-    if (!shortDescription || !shortDescription.trim()) {
-      return NextResponse.json(
-        { error: "Vui lòng nhập phần giới thiệu tóm tắt tác phẩm!" },
-        { status: 400 }
-      );
-    }
-
-    if (!genres || genres.length === 0) {
-      return NextResponse.json(
-        { error: "Vui lòng chọn ít nhất một thể loại cho truyện!" },
-        { status: 400 }
-      );
-    }
-
-    // Determine Author details
-    let finalAuthorId = authorId;
-    let finalAuthorName = authorName?.trim();
-    let finalAuthorPenName = authorPenName?.trim() || finalAuthorName;
-    let finalAuthorAvatar = authorAvatar?.trim();
-
-    if (authorMode === "EXISTING_USER" && authorId) {
-      const existingUser = getUserById(authorId);
-      if (existingUser) {
-        finalAuthorId = existingUser.id;
-        finalAuthorName = existingUser.penName || existingUser.name;
-        finalAuthorPenName = existingUser.penName || existingUser.name;
-        finalAuthorAvatar = existingUser.avatarUrl;
-      }
-    }
-
-    if (!finalAuthorName) {
-      return NextResponse.json(
-        { error: "Vui lòng chỉ định hoặc nhập tên tác giả!" },
-        { status: 400 }
-      );
-    }
-
-    // Check duplicate slug if provided
-    if (slug && slug.trim()) {
-      const isDuplicate = STORIES_DATA.some(
-        (s) => s.slug.toLowerCase() === slug.trim().toLowerCase()
-      );
-      if (isDuplicate) {
-        return NextResponse.json(
-          { error: `Đường dẫn tĩnh "${slug}" đã tồn tại! Vui lòng chọn slug khác.` },
-          { status: 409 }
-        );
-      }
-    }
-
-    const finalCoverUrl =
-      coverUrl && coverUrl.trim()
-        ? coverUrl.trim()
-        : "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=600&auto=format&fit=crop&q=80";
-
-    const createdStory = adminCreateStory(
-      {
-        title,
-        slug,
-        authorId: finalAuthorId,
-        authorName: finalAuthorName,
-        authorPenName: finalAuthorPenName,
-        authorAvatar: finalAuthorAvatar,
-        coverUrl: finalCoverUrl,
-        shortDescription,
-        fullDescription,
-        genres,
-        tags,
-        status,
-        featured,
-      },
-      auth.adminName || "Admin"
-    );
+    await writeAdminAudit({
+      adminId: context.adminId,
+      action: "CREATE_STORY",
+      targetType: "STORY",
+      targetId: story.id,
+      details: { title: story.title },
+    });
 
     return NextResponse.json(
-      {
-        success: true,
-        message: `Đã khởi tạo tác phẩm "${createdStory.title}" thành công!`,
-        story: createdStory,
-      },
+      { success: true, message: `Đã khởi tạo tác phẩm "${story.title}".`, story: serializeStory(story) },
       { status: 201 }
     );
   } catch (error) {
     console.error("Admin Create Story Error:", error);
-    return NextResponse.json(
-      { error: "Lỗi máy chủ khi khởi tạo tác phẩm!" },
-      { status: 500 }
-    );
+    if (error && typeof error === "object" && "code" in error && error.code === "P2002") {
+      return NextResponse.json({ error: "Slug truyện đã tồn tại." }, { status: 409 });
+    }
+    return NextResponse.json({ error: "Lỗi máy chủ khi khởi tạo tác phẩm!" }, { status: 500 });
   }
 }

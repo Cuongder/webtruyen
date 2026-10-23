@@ -1,14 +1,26 @@
 import { PrismaClient, Role } from "@prisma/client";
 import bcrypt from "bcryptjs";
-import { GENRES_DATA, STORIES_DATA, CHAPTERS_DATA } from "../src/lib/data-store";
+import { BADGES_DATA, GENRES_DATA, STORIES_DATA, CHAPTERS_DATA, USERS_DATA } from "./seed-data";
 
 const prisma = new PrismaClient();
 
 async function main() {
   console.log("🌱 Bắt đầu gieo mầm dữ liệu (Seed Data) cho Mộc Thư...");
 
-  // 1. Tạo demo users
-  const passwordHash = await bcrypt.hash("mocthu123", 10);
+  const defaultPassword = process.env.SEED_DEFAULT_USER_PASSWORD;
+  const adminPassword = process.env.SEED_ADMIN_PASSWORD || defaultPassword;
+  const authorPassword = process.env.SEED_AUTHOR_PASSWORD || defaultPassword;
+  const readerPassword = process.env.SEED_READER_PASSWORD || defaultPassword;
+  if (!adminPassword || !authorPassword || !readerPassword) {
+    throw new Error(
+      "Missing SEED_ADMIN_PASSWORD, SEED_AUTHOR_PASSWORD, SEED_READER_PASSWORD (or SEED_DEFAULT_USER_PASSWORD)."
+    );
+  }
+
+  // 1. Tạo users từ env-managed passwords.
+  const adminPasswordHash = await bcrypt.hash(adminPassword, 12);
+  const authorPasswordHash = await bcrypt.hash(authorPassword, 12);
+  const readerPasswordHash = await bcrypt.hash(readerPassword, 12);
 
   const readerUser = await prisma.user.upsert({
     where: { email: "reader@mocthu.vn" },
@@ -16,7 +28,7 @@ async function main() {
     create: {
       email: "reader@mocthu.vn",
       username: "lamphong",
-      passwordHash,
+      passwordHash: readerPasswordHash,
       role: Role.READER,
       profile: {
         create: {
@@ -34,7 +46,7 @@ async function main() {
     create: {
       email: "author@mocthu.vn",
       username: "coniemvu",
-      passwordHash,
+      passwordHash: authorPasswordHash,
       role: Role.AUTHOR,
       profile: {
         create: {
@@ -61,7 +73,7 @@ async function main() {
     create: {
       email: "admin@mocthu.vn",
       username: "quantrimocthu",
-      passwordHash,
+      passwordHash: adminPasswordHash,
       role: Role.ADMIN,
       profile: {
         create: {
@@ -78,7 +90,7 @@ async function main() {
     create: {
       email: "hotprince@mocthu.vn",
       username: "hotprince",
-      passwordHash: await bcrypt.hash("Napoleong112@", 10),
+      passwordHash: adminPasswordHash,
       role: Role.ADMIN,
       profile: {
         create: {
@@ -90,7 +102,7 @@ async function main() {
     },
   });
 
-  console.log("✅ Đã tạo thành công các tài khoản: reader, author, admin, hotprince.");
+  console.log("✅ Đã tạo thành công các tài khoản seed.");
 
   // 2. Tạo thể loại (Genres)
   for (const genre of GENRES_DATA) {
@@ -105,6 +117,43 @@ async function main() {
     });
   }
   console.log(`✅ Đã tạo ${GENRES_DATA.length} thể loại văn học.`);
+
+  for (const badge of BADGES_DATA) {
+    await prisma.badge.upsert({
+      where: { code: badge.code },
+      update: {
+        name: badge.name,
+        description: badge.description,
+        icon: badge.icon,
+        color: badge.color,
+        category: badge.category,
+      },
+      create: {
+        id: badge.id,
+        name: badge.name,
+        code: badge.code,
+        description: badge.description,
+        icon: badge.icon,
+        color: badge.color,
+        category: badge.category,
+      },
+    });
+  }
+  const seededUsers = await prisma.user.findMany({ select: { id: true, username: true } });
+  for (const legacyUser of USERS_DATA) {
+    const user = seededUsers.find((candidate) => candidate.username === legacyUser.username);
+    if (!user) continue;
+    for (const badgeId of legacyUser.badges) {
+      const badge = await prisma.badge.findUnique({ where: { id: badgeId } });
+      if (badge) {
+        await prisma.userBadge.upsert({
+          where: { userId_badgeId: { userId: user.id, badgeId: badge.id } },
+          update: {},
+          create: { userId: user.id, badgeId: badge.id },
+        });
+      }
+    }
+  }
 
   // 3. Tạo các bộ truyện và chương
   for (const story of STORIES_DATA) {

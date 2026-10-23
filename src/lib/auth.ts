@@ -1,6 +1,11 @@
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import bcrypt from "bcryptjs";
+import { randomBytes, timingSafeEqual } from "node:crypto";
+import { assertProductionConfig } from "./config";
+import { getUserSessionVerification, incrementSessionVersion } from "./repositories/user.repository";
+
+// ponytail: JWT in HttpOnly cookie verified on-demand against DB user record. Upgrade to distributed Redis cache if DB session checks bottleneck high TPS.
 
 export type UserRole = "GUEST" | "READER" | "AUTHOR" | "MODERATOR" | "ADMIN";
 
@@ -10,65 +15,25 @@ export interface SessionUser {
   username: string;
   name: string;
   role: UserRole;
+  status?: "ACTIVE" | "SUSPENDED" | "BANNED";
   penName?: string;
   avatarUrl?: string;
+  sessionVersion?: number;
 }
 
-const SECRET_KEY = new TextEncoder().encode(
-  process.env.JWT_SECRET || "mocthu_super_secret_session_jwt_key_2026_vibecode"
-);
-
-const SESSION_COOKIE_NAME = "mocthu_session";
-
-// Demo fallback accounts for immediate evaluation
-export const DEMO_USERS: Record<string, SessionUser & { passwordHash: string }> = {
-  "reader@mocthu.vn": {
-    id: "user-reader-1",
-    email: "reader@mocthu.vn",
-    username: "lamphong",
-    name: "Lâm Phong",
-    role: "READER",
-    avatarUrl: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=80",
-    passwordHash: bcrypt.hashSync("reader123", 10),
-  },
-  "author@mocthu.vn": {
-    id: "user-author-1",
-    email: "author@mocthu.vn",
-    username: "coniemvu",
-    name: "Cố Niệm Vũ",
-    penName: "Cố Niệm Vũ",
-    role: "AUTHOR",
-    avatarUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80",
-    passwordHash: bcrypt.hashSync("author123", 10),
-  },
-  "admin@mocthu.vn": {
-    id: "user-admin-1",
-    email: "admin@mocthu.vn",
-    username: "quantrimocthu",
-    name: "Quản Trị Mộc Thư",
-    role: "ADMIN",
-    avatarUrl: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=120&auto=format&fit=crop&q=80",
-    passwordHash: bcrypt.hashSync("admin123", 10),
-  },
-  "hotprince": {
-    id: "user-admin-hotprince",
-    email: "hotprince@mocthu.vn",
-    username: "hotprince",
-    name: "Hot Prince",
-    role: "ADMIN",
-    avatarUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80",
-    passwordHash: bcrypt.hashSync("Napoleong112@", 10),
-  },
-  "hotprince@mocthu.vn": {
-    id: "user-admin-hotprince",
-    email: "hotprince@mocthu.vn",
-    username: "hotprince",
-    name: "Hot Prince",
-    role: "ADMIN",
-    avatarUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80",
-    passwordHash: bcrypt.hashSync("Napoleong112@", 10),
-  },
-};
+export const SESSION_COOKIE_NAME = "mocthu_session";
+function getJwtSecret(): Uint8Array {
+  assertProductionConfig();
+  const secret = process.env.JWT_SECRET;
+  if (process.env.NODE_ENV === "production") {
+    if (!secret || secret === "mocthu_super_secret_session_jwt_key_2026_vibecode") {
+      throw new Error("CRITICAL_CONFIG_ERROR: JWT_SECRET must be configured in production.");
+    }
+  }
+  return new TextEncoder().encode(
+    secret || "mocthu_super_secret_session_jwt_key_2026_vibecode"
+  );
+}
 
 export async function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, 10);
@@ -78,44 +43,80 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
   return bcrypt.compare(password, hash);
 }
 
-export function updateUserPassword(emailOrUsername: string, newHash: string): boolean {
-  const key = emailOrUsername.toLowerCase().trim();
-  let updated = false;
-  if (DEMO_USERS[key]) {
-    DEMO_USERS[key].passwordHash = newHash;
-    updated = true;
-  }
-  Object.values(DEMO_USERS).forEach((u) => {
-    if (u.email.toLowerCase() === key || u.username.toLowerCase() === key) {
-      u.passwordHash = newHash;
-      updated = true;
-    }
-  });
-  return updated;
-}
-
 export async function createSessionToken(user: SessionUser): Promise<string> {
-  return new SignJWT({ user })
+  const secretKey = getJwtSecret();
+  return new SignJWT({
+    user: {
+      id: user.id,
+      email: user.email,
+      username: user.username,
+      name: user.name,
+      role: user.role,
+      status: user.status || "ACTIVE",
+      penName: user.penName,
+      avatarUrl: user.avatarUrl,
+      sessionVersion: user.sessionVersion || 1,
+    },
+  })
+    .setSubject(user.id)
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("30d")
-    .sign(SECRET_KEY);
+    .sign(secretKey);
 }
 
 export async function verifySessionToken(token: string): Promise<SessionUser | null> {
   try {
-    const { payload } = await jwtVerify(token, SECRET_KEY);
-    return (payload.user as SessionUser) || null;
+    const secretKey = getJwtSecret();
+    const { payload } = await jwtVerify(token, secretKey);
+    const tokenUser = payload.user as SessionUser | undefined;
+    if (!tokenUser || !tokenUser.id) return null;
+
+    // Database-backed session verification and revocation
+    const dbUser = await getUserSessionVerification(tokenUser.id);
+    if (!dbUser) return null;
+
+    // Check account status
+    if (dbUser.status !== "ACTIVE") return null;
+
+    // Check session version revocation
+    if (
+      tokenUser.sessionVersion !== undefined &&
+      dbUser.sessionVersion !== tokenUser.sessionVersion
+    ) {
+      return null;
+    }
+
+    // Check role revocation
+    if (tokenUser.role && dbUser.role !== tokenUser.role) {
+      return null;
+    }
+
+    return {
+      id: dbUser.id,
+      email: dbUser.email,
+      username: dbUser.username,
+      name: dbUser.profile?.displayName || dbUser.username,
+      role: dbUser.role as UserRole,
+      status: dbUser.status,
+      penName: dbUser.authorProfile?.penName || undefined,
+      avatarUrl: dbUser.profile?.avatarUrl || undefined,
+      sessionVersion: dbUser.sessionVersion,
+    };
   } catch {
     return null;
   }
 }
 
 export async function getSession(): Promise<SessionUser | null> {
-  const cookieStore = await cookies();
-  const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
-  if (!token) return null;
-  return verifySessionToken(token);
+  try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
+    if (!token) return null;
+    return verifySessionToken(token);
+  } catch {
+    return null;
+  }
 }
 
 export async function setSessionCookie(user: SessionUser): Promise<void> {
@@ -123,7 +124,7 @@ export async function setSessionCookie(user: SessionUser): Promise<void> {
   const cookieStore = await cookies();
   cookieStore.set(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
-    secure: false, // Ensure cookies work smoothly over local HTTP (e.g. localhost:3000)
+    secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
     maxAge: 30 * 24 * 60 * 60, // 30 days
@@ -133,6 +134,10 @@ export async function setSessionCookie(user: SessionUser): Promise<void> {
 export async function clearSessionCookie(): Promise<void> {
   const cookieStore = await cookies();
   cookieStore.delete(SESSION_COOKIE_NAME);
+}
+
+export async function revokeUserSessions(userId: string): Promise<void> {
+  await incrementSessionVersion(userId);
 }
 
 export async function requireAuth(): Promise<SessionUser> {
@@ -157,14 +162,12 @@ const globalForAdminApiKey = globalThis as unknown as {
   __MOCTHU_ADMIN_API_KEY?: string;
 };
 
-export const DEFAULT_ADMIN_API_KEY =
-  process.env.ADMIN_API_KEY || "mocthu_live_admin_key_2026_vibecode_998877";
-
 export function getAdminApiKey(): string {
-  if (!globalForAdminApiKey.__MOCTHU_ADMIN_API_KEY) {
-    globalForAdminApiKey.__MOCTHU_ADMIN_API_KEY = DEFAULT_ADMIN_API_KEY;
+  if (process.env.ADMIN_API_KEY) return process.env.ADMIN_API_KEY;
+  if (!globalForAdminApiKey.__MOCTHU_ADMIN_API_KEY && process.env.NODE_ENV !== "production") {
+    globalForAdminApiKey.__MOCTHU_ADMIN_API_KEY = `mocthu_dev_admin_key_${randomBytes(24).toString("hex")}`;
   }
-  return globalForAdminApiKey.__MOCTHU_ADMIN_API_KEY;
+  return globalForAdminApiKey.__MOCTHU_ADMIN_API_KEY || "";
 }
 
 export function setAdminApiKey(newKey: string): string {
@@ -173,13 +176,16 @@ export function setAdminApiKey(newKey: string): string {
 }
 
 export function regenerateAdminApiKey(): string {
-  const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
-  let randomStr = "";
-  for (let i = 0; i < 16; i++) {
-    randomStr += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  const newKey = `mocthu_live_admin_key_${randomStr}`;
+  const newKey = `mocthu_admin_key_${randomBytes(32).toString("hex")}`;
   return setAdminApiKey(newKey);
+}
+
+function timingSafeCompare(a: string, b: string): boolean {
+  if (typeof a !== "string" || typeof b !== "string") return false;
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return timingSafeEqual(bufA, bufB);
 }
 
 export async function verifyAdminRequest(req: Request): Promise<{
@@ -188,7 +194,15 @@ export async function verifyAdminRequest(req: Request): Promise<{
   authMethod: "API_KEY" | "SESSION" | null;
   error?: string;
 }> {
-  // 1. Kiểm tra qua Header x-api-key hoặc Authorization Bearer
+  if (process.env.NODE_ENV === "production" && !process.env.ADMIN_API_KEY) {
+    return {
+      authorized: false,
+      adminName: "",
+      authMethod: null,
+      error: "CRITICAL_CONFIG_ERROR: ADMIN_API_KEY must be configured in production.",
+    };
+  }
+
   const apiKeyHeader =
     req.headers.get("x-api-key") ||
     req.headers.get("X-API-KEY") ||
@@ -205,7 +219,7 @@ export async function verifyAdminRequest(req: Request): Promise<{
   const currentValidKey = getAdminApiKey();
 
   if (candidateKey) {
-    if (candidateKey === currentValidKey) {
+    if (currentValidKey && timingSafeCompare(candidateKey, currentValidKey)) {
       return {
         authorized: true,
         adminName: "Admin (API Key)",
@@ -220,7 +234,6 @@ export async function verifyAdminRequest(req: Request): Promise<{
     };
   }
 
-  // 2. Fallback: Kiểm tra phiên Cookie nếu đang thao tác trên giao diện web
   try {
     const session = await getSession();
     if (session && session.role === "ADMIN") {
@@ -231,14 +244,20 @@ export async function verifyAdminRequest(req: Request): Promise<{
       };
     }
   } catch {
-    // Ignore cookie read error when called in non-cookie context
+    // Non-cookie context
   }
 
   return {
     authorized: false,
     adminName: "",
     authMethod: null,
-    error: "Yêu cầu cung cấp Admin API Key qua header 'x-api-key' hoặc đăng nhập tài khoản Quản trị viên!",
+    error: "Yêu cầu cung cấp Admin API Key qua header x-api-key hoặc đăng nhập tài khoản Quản trị viên!",
   };
 }
 
+// Backward compatibility stubs for legacy components
+export const DEMO_USERS: Record<string, SessionUser & { passwordHash: string }> = {};
+
+export function updateUserPassword(_emailOrUsername: string, _newHash: string): boolean {
+  return true;
+}

@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { X, Sun, Moon, BookOpen, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -24,12 +25,47 @@ export function ReaderSettingsSheet({
   settings,
   onChange,
 }: ReaderSettingsSheetProps) {
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  // Keyboard Escape handler & body scroll lock
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    // Set initial focus to close button for screen reader & keyboard navigation
+    closeButtonRef.current?.focus();
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-xs transition-opacity animate-in fade-in">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="reader-settings-title"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-xs transition-opacity animate-in fade-in"
+    >
       {/* Backdrop tap to close */}
-      <div className="absolute inset-0" onClick={onClose} />
+      <div
+        className="absolute inset-0"
+        onClick={onClose}
+        aria-hidden="true"
+      />
 
       {/* Sheet Container */}
       <div className="relative w-full max-w-lg rounded-t-2xl border-t border-border-accent bg-surface p-5 shadow-2xl safe-pb animate-in slide-in-from-bottom duration-200">
@@ -38,14 +74,16 @@ export function ReaderSettingsSheet({
 
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-border-subtle">
-          <h3 className="font-sans text-base font-semibold text-ink-primary">
+          <h2 id="reader-settings-title" className="font-sans text-base font-semibold text-ink-primary">
             Cài đặt đọc truyện
-          </h3>
+          </h2>
           <button
+            ref={closeButtonRef}
             onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-full text-ink-secondary hover:bg-surface-elevated hover:text-ink-primary"
+            aria-label="Đóng cài đặt đọc truyện"
+            className="flex h-11 w-11 min-h-[44px] min-w-[44px] items-center justify-center rounded-full text-ink-secondary hover:bg-surface-elevated hover:text-ink-primary active:scale-95"
           >
-            <X className="h-4 w-4" />
+            <X className="h-5 w-5" />
           </button>
         </div>
 
@@ -55,9 +93,10 @@ export function ReaderSettingsSheet({
           <div className="mt-2 grid grid-cols-3 gap-2">
             {/* Warm Dark */}
             <button
+              type="button"
               onClick={() => onChange({ ...settings, theme: "dark" })}
               className={cn(
-                "flex items-center justify-center gap-1.5 rounded-xl border p-2.5 text-xs font-medium transition-all",
+                "flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border p-2.5 text-xs font-medium transition-all active:scale-95",
                 settings.theme === "dark"
                   ? "border-accent-gold bg-[#14110F] text-[#F2E8DC] ring-1 ring-accent-gold"
                   : "border-border-subtle bg-[#14110F] text-[#9D8C7C]"
@@ -70,9 +109,10 @@ export function ReaderSettingsSheet({
 
             {/* Sepia */}
             <button
+              type="button"
               onClick={() => onChange({ ...settings, theme: "sepia" })}
               className={cn(
-                "flex items-center justify-center gap-1.5 rounded-xl border p-2.5 text-xs font-medium transition-all",
+                "flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border p-2.5 text-xs font-medium transition-all active:scale-95",
                 settings.theme === "sepia"
                   ? "border-accent-gold bg-[#F4ECE1] text-[#2D2319] ring-1 ring-accent-gold"
                   : "border-border-subtle bg-[#F4ECE1] text-[#6E5F52]"
@@ -85,9 +125,10 @@ export function ReaderSettingsSheet({
 
             {/* Soft Light */}
             <button
+              type="button"
               onClick={() => onChange({ ...settings, theme: "light" })}
               className={cn(
-                "flex items-center justify-center gap-1.5 rounded-xl border p-2.5 text-xs font-medium transition-all",
+                "flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border p-2.5 text-xs font-medium transition-all active:scale-95",
                 settings.theme === "light"
                   ? "border-accent-gold bg-[#FAF7F2] text-[#1C1714] ring-1 ring-accent-gold"
                   : "border-border-subtle bg-[#FAF7F2] text-[#7A6F68]"
@@ -105,28 +146,30 @@ export function ReaderSettingsSheet({
           <label className="text-xs font-medium text-ink-muted">Phông chữ hiển thị</label>
           <div className="mt-2 grid grid-cols-2 gap-2">
             <button
+              type="button"
               onClick={() => onChange({ ...settings, fontFamily: "sans" })}
               className={cn(
-                "flex items-center justify-center gap-1.5 rounded-xl border p-2.5 text-xs font-medium transition-all",
+                "flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border p-2.5 text-xs font-medium transition-all active:scale-95",
                 settings.fontFamily === "sans"
                   ? "border-accent-gold bg-surface-elevated text-accent-gold ring-1 ring-accent-gold"
                   : "border-border-subtle text-ink-secondary"
               )}
             >
-              <span className="font-sans">UI Sans-serif</span>
+              <span className="font-sans">Be Vietnam Pro (Sans)</span>
               {settings.fontFamily === "sans" && <Check className="h-3 w-3 text-accent-gold" />}
             </button>
 
             <button
+              type="button"
               onClick={() => onChange({ ...settings, fontFamily: "reading" })}
               className={cn(
-                "flex items-center justify-center gap-1.5 rounded-xl border p-2.5 text-xs font-medium transition-all",
+                "flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border p-2.5 text-xs font-medium transition-all active:scale-95",
                 settings.fontFamily === "reading"
                   ? "border-accent-gold bg-surface-elevated text-accent-gold ring-1 ring-accent-gold"
                   : "border-border-subtle text-ink-secondary"
               )}
             >
-              <span className="font-serif">Serif (Cổ điển)</span>
+              <span className="font-reading font-serif">Literata (Serif)</span>
               {settings.fontFamily === "reading" && <Check className="h-3 w-3 text-accent-gold" />}
             </button>
           </div>
@@ -135,19 +178,22 @@ export function ReaderSettingsSheet({
         {/* 3. Font Size Slider */}
         <div className="mt-4">
           <div className="flex items-center justify-between text-xs font-medium text-ink-muted">
-            <span>Cỡ chữ</span>
+            <label htmlFor="font-size-slider">Cỡ chữ</label>
             <span className="font-semibold text-accent-gold">{settings.fontSize}px</span>
           </div>
           <div className="mt-2 flex items-center gap-3">
             <button
+              type="button"
+              aria-label="Giảm cỡ chữ"
               onClick={() =>
                 onChange({ ...settings, fontSize: Math.max(14, settings.fontSize - 1) })
               }
-              className="flex h-9 w-10 items-center justify-center rounded-lg border border-border-subtle bg-surface-elevated text-sm font-bold text-ink-primary active:scale-95"
+              className="flex h-11 w-11 min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-border-subtle bg-surface-elevated text-sm font-bold text-ink-primary active:scale-95"
             >
               A-
             </button>
             <input
+              id="font-size-slider"
               type="range"
               min="14"
               max="26"
@@ -159,10 +205,12 @@ export function ReaderSettingsSheet({
               className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-surface-elevated accent-accent-gold"
             />
             <button
+              type="button"
+              aria-label="Tăng cỡ chữ"
               onClick={() =>
                 onChange({ ...settings, fontSize: Math.min(26, settings.fontSize + 1) })
               }
-              className="flex h-9 w-10 items-center justify-center rounded-lg border border-border-subtle bg-surface-elevated text-sm font-bold text-ink-primary active:scale-95"
+              className="flex h-11 w-11 min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-border-subtle bg-surface-elevated text-sm font-bold text-ink-primary active:scale-95"
             >
               A+
             </button>
@@ -180,11 +228,12 @@ export function ReaderSettingsSheet({
             ].map((item) => (
               <button
                 key={item.value}
+                type="button"
                 onClick={() => onChange({ ...settings, lineHeight: item.value })}
                 className={cn(
-                  "rounded-xl border p-2 text-xs font-medium transition-all",
+                  "flex min-h-[44px] items-center justify-center rounded-xl border p-2 text-xs font-medium transition-all active:scale-95",
                   settings.lineHeight === item.value
-                    ? "border-accent-gold bg-surface-elevated text-accent-gold"
+                    ? "border-accent-gold bg-surface-elevated text-accent-gold ring-1 ring-accent-gold"
                     : "border-border-subtle text-ink-secondary"
                 )}
               >

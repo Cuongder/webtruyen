@@ -80,3 +80,8 @@ body {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/* Literata font token fallback */
+.font-reading {
+  font-family: var(--font-reading), "Literata", ui-serif, Georgia, serif;
+}

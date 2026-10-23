@@ -1,12 +1,12 @@
 import Link from "next/link";
-import { GENRES_DATA } from "@/lib/data-store";
 import { cn } from "@/lib/utils";
 
 interface GenreChipsProps {
   activeSlug?: string;
+  genres: Array<{ id: string; name: string; slug: string }>;
 }
 
-export function GenreChips({ activeSlug }: GenreChipsProps) {
+export function GenreChips({ activeSlug, genres }: GenreChipsProps) {
   return (
     <div className="flex w-full items-center gap-2 overflow-x-auto py-1 no-scrollbar">
       <Link
@@ -21,7 +21,7 @@ export function GenreChips({ activeSlug }: GenreChipsProps) {
         Tất cả
       </Link>
 
-      {GENRES_DATA.map((genre) => {
+      {genres.map((genre) => {
         const isActive = activeSlug === genre.slug;
         return (
           <Link

@@ -27,7 +27,7 @@ interface ReaderCanvasProps {
 
 const DEFAULT_SETTINGS: ReaderSettings = {
   theme: "dark",
-  fontFamily: "sans",
+  fontFamily: "reading",
   fontSize: 18,
   lineHeight: 1.85,
   wakeLock: false,
@@ -47,6 +47,7 @@ export function ReaderCanvas({
   const [scrollProgress, setScrollProgress] = useState(0);
   const [isBookmarked, setIsBookmarked] = useState(false);
   const lastScrollY = useRef(0);
+  const lastProgressSync = useRef(0);
 
   // Load user settings from localStorage
   useEffect(() => {
@@ -54,17 +55,23 @@ export function ReaderCanvas({
       const saved = localStorage.getItem("mocthu_reader_settings");
       if (saved) {
         const parsed = JSON.parse(saved);
-        // Default to sans (ui-sans-serif)
         setSettings({
           ...DEFAULT_SETTINGS,
           ...parsed,
-          fontFamily: parsed.fontFamily || "sans",
+          fontFamily: parsed.fontFamily || "reading",
         });
       }
     } catch {
       // Ignore storage errors
     }
   }, []);
+
+  useEffect(() => {
+    fetch(`/api/bookmarks?chapterId=${encodeURIComponent(chapter.id)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => setIsBookmarked(Boolean(data?.bookmarks?.length)))
+      .catch(() => {});
+  }, [chapter.id]);
 
   const handleSettingsChange = (newSettings: ReaderSettings) => {
     setSettings(newSettings);
@@ -73,6 +80,25 @@ export function ReaderCanvas({
     } catch {
       // Ignore
     }
+  };
+
+  const handleToggleBookmark = async () => {
+    const next = !isBookmarked;
+    setIsBookmarked(next);
+    const existing = await fetch(`/api/bookmarks?chapterId=${encodeURIComponent(chapter.id)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .catch(() => null);
+    const bookmark = existing?.bookmarks?.[0];
+    const response = next
+      ? await fetch("/api/bookmarks", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ storyId: story.id, chapterId: chapter.id, paragraphIndex: 0 }),
+        })
+      : bookmark?.id
+        ? await fetch(`/api/bookmarks?id=${encodeURIComponent(bookmark.id)}`, { method: "DELETE" })
+        : null;
+    if (response && !response.ok) setIsBookmarked(!next);
   };
 
   // Scroll tracking & auto-hide HUD chrome
@@ -85,15 +111,19 @@ export function ReaderCanvas({
       const progress = Math.min(100, Math.max(0, (currentScrollY / maxScroll) * 100));
       setScrollProgress(progress);
 
-      // Save reading progress to local storage
-      const progressData = {
-        storySlug: story.slug,
-        chapterSlug: chapter.slug,
-        chapterNumber: chapter.chapterNumber,
-        percent: Math.round(progress),
-        updatedAt: new Date().toISOString(),
-      };
-      localStorage.setItem(`mocthu_progress_${story.slug}`, JSON.stringify(progressData));
+      const now = Date.now();
+      if (now - lastProgressSync.current > 1500) {
+        lastProgressSync.current = now;
+        void fetch("/api/reading-progress", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            storyId: story.id,
+            chapterId: chapter.id,
+            scrollPercentage: Math.max(1, Math.round(progress)),
+          }),
+        });
+      }
     }
 
     // Auto-hide chrome on downward scroll, reveal on upward scroll
@@ -108,7 +138,7 @@ export function ReaderCanvas({
     }
 
     lastScrollY.current = currentScrollY;
-  }, [story.slug, chapter.slug, chapter.chapterNumber]);
+  }, [story.slug, story.title, story.coverUrl, story.totalChapters, chapter.slug, chapter.title, chapter.chapterNumber, allChapters.length]);
 
   useEffect(() => {
     window.addEventListener("scroll", handleScroll, { passive: true });
@@ -117,7 +147,6 @@ export function ReaderCanvas({
 
   // Single tap on canvas toggles controls
   const handleCanvasTap = (e: React.MouseEvent) => {
-    // Avoid toggling if clicking links or interactive elements
     const target = e.target as HTMLElement;
     if (target.closest("button") || target.closest("a") || target.closest("input")) {
       return;
@@ -169,18 +198,19 @@ export function ReaderCanvas({
       >
         <Link
           href={`/story/${story.slug}`}
-          className="flex items-center gap-1.5 text-xs font-medium hover:text-accent-gold transition-colors"
+          className="flex min-h-[44px] items-center gap-1.5 text-xs font-medium hover:text-accent-gold transition-colors"
+          aria-label={`Quay lại truyện ${story.title}`}
         >
           <ArrowLeft className="h-4 w-4" />
           <span className="line-clamp-1 max-w-[140px] sm:max-w-xs">{story.title}</span>
         </Link>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
           <button
-            onClick={() => setIsBookmarked(!isBookmarked)}
-            aria-label="Đánh dấu trang"
+            onClick={handleToggleBookmark}
+            aria-label={isBookmarked ? "Bỏ đánh dấu chương này" : "Đánh dấu chương này"}
             className={cn(
-              "flex h-9 w-9 items-center justify-center rounded-full transition-colors",
+              "flex h-11 w-11 items-center justify-center rounded-full transition-colors active:scale-95",
               isBookmarked ? "text-accent-gold" : "opacity-75 hover:opacity-100"
             )}
           >
@@ -189,8 +219,8 @@ export function ReaderCanvas({
 
           <button
             onClick={() => setIsSettingsOpen(true)}
-            aria-label="Cài đặt giao diện"
-            className="flex h-9 w-9 items-center justify-center rounded-full opacity-75 hover:opacity-100 transition-colors"
+            aria-label="Cài đặt giao diện đọc truyện"
+            className="flex h-11 w-11 items-center justify-center rounded-full opacity-75 hover:opacity-100 transition-colors active:scale-95"
           >
             <SlidersHorizontal className="h-4 w-4" />
           </button>
@@ -204,7 +234,7 @@ export function ReaderCanvas({
           <p className="text-xs uppercase tracking-widest text-accent-gold font-semibold">
             {story.title}
           </p>
-          <h1 className="mt-2 font-sans text-2xl font-bold tracking-tight sm:text-3xl">
+          <h1 className="mt-2 font-display text-2xl font-bold tracking-tight sm:text-3xl">
             {chapter.title}
           </h1>
           <div className="mt-3 flex items-center justify-center gap-3 text-xs opacity-60">
@@ -214,17 +244,17 @@ export function ReaderCanvas({
           </div>
         </div>
 
-        {/* Prose Paragraphs */}
+        {/* Prose Paragraphs with Literata reading font */}
         <div
           className={cn(
             "space-y-6 transition-all duration-200",
-            settings.fontFamily === "reading" ? "font-serif" : "font-sans"
+            settings.fontFamily === "reading" ? "font-reading" : "font-sans"
           )}
           style={{
             fontFamily:
               settings.fontFamily === "reading"
-                ? "var(--font-reading), Georgia, serif"
-                : "ui-sans-serif, var(--font-sans), system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
+                ? "var(--font-reading), 'Literata', Georgia, serif"
+                : "var(--font-sans), ui-sans-serif, system-ui, -apple-system, sans-serif",
             fontSize: `${settings.fontSize}px`,
             lineHeight: settings.lineHeight,
           }}
@@ -249,7 +279,7 @@ export function ReaderCanvas({
             {prevChapter ? (
               <Link
                 href={`/story/${story.slug}/chapter/${prevChapter.slug}`}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-current/20 p-3 text-xs font-semibold transition-all hover:border-accent-gold hover:text-accent-gold active:scale-95"
+                className="flex flex-1 min-h-[44px] items-center justify-center gap-1.5 rounded-xl border border-current/20 p-3 text-xs font-semibold transition-all hover:border-accent-gold hover:text-accent-gold active:scale-95"
               >
                 <ChevronLeft className="h-4 w-4" />
                 <span>Chương trước</span>
@@ -263,7 +293,7 @@ export function ReaderCanvas({
             {nextChapter ? (
               <Link
                 href={`/story/${story.slug}/chapter/${nextChapter.slug}`}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-accent-gold p-3 text-xs font-bold text-bg-base shadow-md transition-all hover:bg-accent-gold-hover hover:scale-102 active:scale-95"
+                className="flex flex-1 min-h-[44px] items-center justify-center gap-1.5 rounded-xl bg-accent-gold p-3 text-xs font-bold text-bg-base shadow-md transition-all hover:bg-accent-gold-hover hover:scale-102 active:scale-95"
               >
                 <span>Chương sau</span>
                 <ChevronRight className="h-4 w-4" />
@@ -289,13 +319,14 @@ export function ReaderCanvas({
         {prevChapter ? (
           <Link
             href={`/story/${story.slug}/chapter/${prevChapter.slug}`}
-            className="flex flex-col items-center py-1 opacity-80 hover:opacity-100 hover:text-accent-gold"
+            className="flex min-h-[44px] min-w-[44px] flex-col items-center justify-center py-1 opacity-80 hover:opacity-100 hover:text-accent-gold"
+            aria-label="Chương trước"
           >
             <ChevronLeft className="h-5 w-5" />
             <span className="text-[10px] mt-0.5">Trước</span>
           </Link>
         ) : (
-          <div className="flex flex-col items-center py-1 opacity-30">
+          <div className="flex min-h-[44px] min-w-[44px] flex-col items-center justify-center py-1 opacity-30">
             <ChevronLeft className="h-5 w-5" />
             <span className="text-[10px] mt-0.5">Trước</span>
           </div>
@@ -304,7 +335,8 @@ export function ReaderCanvas({
         {/* Table of Contents */}
         <button
           onClick={() => setIsChapterListOpen(true)}
-          className="flex flex-col items-center py-1 opacity-80 hover:opacity-100 hover:text-accent-gold"
+          className="flex min-h-[44px] min-w-[44px] flex-col items-center justify-center py-1 opacity-80 hover:opacity-100 hover:text-accent-gold"
+          aria-label="Mở mục lục chương"
         >
           <List className="h-5 w-5" />
           <span className="text-[10px] mt-0.5">Mục lục</span>
@@ -313,7 +345,8 @@ export function ReaderCanvas({
         {/* Settings */}
         <button
           onClick={() => setIsSettingsOpen(true)}
-          className="flex flex-col items-center py-1 text-accent-gold"
+          className="flex min-h-[44px] min-w-[44px] flex-col items-center justify-center py-1 text-accent-gold"
+          aria-label="Mở cài đặt đọc truyện"
         >
           <SlidersHorizontal className="h-5 w-5" />
           <span className="text-[10px] mt-0.5 font-medium">Cài đặt</span>
@@ -323,13 +356,14 @@ export function ReaderCanvas({
         {nextChapter ? (
           <Link
             href={`/story/${story.slug}/chapter/${nextChapter.slug}`}
-            className="flex flex-col items-center py-1 opacity-80 hover:opacity-100 hover:text-accent-gold"
+            className="flex min-h-[44px] min-w-[44px] flex-col items-center justify-center py-1 opacity-80 hover:opacity-100 hover:text-accent-gold"
+            aria-label="Chương sau"
           >
             <ChevronRight className="h-5 w-5" />
             <span className="text-[10px] mt-0.5">Sau</span>
           </Link>
         ) : (
-          <div className="flex flex-col items-center py-1 opacity-30">
+          <div className="flex min-h-[44px] min-w-[44px] flex-col items-center justify-center py-1 opacity-30">
             <ChevronRight className="h-5 w-5" />
             <span className="text-[10px] mt-0.5">Sau</span>
           </div>

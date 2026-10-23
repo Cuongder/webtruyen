@@ -1,6 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getSession } from "@/lib/auth";
-import { CHAPTERS_DATA, STORIES_DATA } from "@/lib/data-store";
+import { canManageChapter, canReadChapter } from "@/lib/access-control";
+import {
+  deleteChapter,
+  findChapterById,
+  findChapterByIdOrSlug,
+  updateChapter,
+} from "@/lib/repositories/chapter.repository";
+import { serializeChapter } from "@/lib/story-mapper";
 
 export async function GET(
   _req: NextRequest,
@@ -8,11 +15,10 @@ export async function GET(
 ) {
   const { id } = await params;
 
-  for (const slug in CHAPTERS_DATA) {
-    const chapter = CHAPTERS_DATA[slug].find((c) => c.id === id || c.slug === id);
-    if (chapter) {
-      return NextResponse.json({ success: true, chapter });
-    }
+  const chapter = await findChapterByIdOrSlug(id);
+  const session = await getSession();
+  if (chapter && canReadChapter(chapter, chapter.story, session)) {
+    return NextResponse.json({ success: true, chapter: serializeChapter(chapter) });
   }
 
   return NextResponse.json({ error: "Không tìm thấy chương truyện!" }, { status: 404 });
@@ -29,23 +35,14 @@ export async function PUT(
     }
 
     const { id } = await params;
-    let foundChapter = null;
-    let foundStory = null;
-
-    for (const slug in CHAPTERS_DATA) {
-      const idx = CHAPTERS_DATA[slug].findIndex((c) => c.id === id || c.slug === id);
-      if (idx !== -1) {
-        foundChapter = CHAPTERS_DATA[slug][idx];
-        foundStory = STORIES_DATA.find((s) => s.slug === slug);
-        break;
-      }
-    }
+    const foundChapter = await findChapterByIdOrSlug(id);
+    const foundStory = foundChapter?.story;
 
     if (!foundChapter || !foundStory) {
       return NextResponse.json({ error: "Không tìm thấy chương truyện!" }, { status: 404 });
     }
 
-    if (session.role !== "ADMIN" && foundStory.authorId !== session.id) {
+    if (!canManageChapter(foundStory, session)) {
       return NextResponse.json(
         { error: "Bạn không có quyền chỉnh sửa chương này!" },
         { status: 403 }
@@ -53,21 +50,31 @@ export async function PUT(
     }
 
     const body = await req.json();
-    if (body.title) foundChapter.title = body.title;
-    if (body.content) {
-      foundChapter.content = body.content;
-      foundChapter.wordCount = body.content.trim().split(/\s+/).filter(Boolean).length;
-    }
-
-    foundStory.updatedAt = new Date().toISOString();
+    const updated = await updateChapter(foundChapter.id, {
+      title: typeof body.title === "string" ? body.title.trim() : undefined,
+      content: typeof body.content === "string" ? body.content : undefined,
+      status:
+        body.status === "DRAFT" ||
+        body.status === "SCHEDULED" ||
+        body.status === "PUBLISHED" ||
+        body.status === "TRASH"
+          ? body.status
+          : undefined,
+    });
 
     return NextResponse.json({
       success: true,
       message: "Cập nhật chương thành công!",
-      chapter: foundChapter,
+      chapter: serializeChapter({ ...updated, story: foundStory }),
     });
   } catch (error) {
     console.error("Update chapter error:", error);
+    if (error && typeof error === "object" && "code" in error && error.code === "P2002") {
+      return NextResponse.json({ error: "Slug chương đã tồn tại." }, { status: 409 });
+    }
+    if (error && typeof error === "object" && "code" in error && error.code === "P2025") {
+      return NextResponse.json({ error: "Không tìm thấy chương truyện!" }, { status: 404 });
+    }
     return NextResponse.json({ error: "Lỗi khi cập nhật chương!" }, { status: 500 });
   }
 }
@@ -84,33 +91,28 @@ export async function DELETE(
 
     const { id } = await params;
 
-    for (const slug in CHAPTERS_DATA) {
-      const idx = CHAPTERS_DATA[slug].findIndex((c) => c.id === id || c.slug === id);
-      if (idx !== -1) {
-        const foundStory = STORIES_DATA.find((s) => s.slug === slug);
-        if (foundStory && session.role !== "ADMIN" && foundStory.authorId !== session.id) {
-          return NextResponse.json(
-            { error: "Bạn không có quyền xóa chương này!" },
-            { status: 403 }
-          );
-        }
-
-        const deleted = CHAPTERS_DATA[slug].splice(idx, 1)[0];
-        if (foundStory) {
-          foundStory.totalChapters = CHAPTERS_DATA[slug].length;
-          foundStory.updatedAt = new Date().toISOString();
-        }
-
-        return NextResponse.json({
-          success: true,
-          message: `Đã xóa thành công ${deleted.title}`,
-        });
+    const foundChapter = await findChapterByIdOrSlug(id);
+    if (foundChapter) {
+      if (!canManageChapter(foundChapter.story, session)) {
+        return NextResponse.json(
+          { error: "Bạn không có quyền xóa chương này!" },
+          { status: 403 }
+        );
       }
+
+      const deleted = await deleteChapter(foundChapter.id);
+      return NextResponse.json({
+        success: true,
+        message: `Đã xóa thành công ${deleted.title}`,
+      });
     }
 
     return NextResponse.json({ error: "Không tìm thấy chương truyện!" }, { status: 404 });
   } catch (error) {
     console.error("Delete chapter error:", error);
+    if (error && typeof error === "object" && "code" in error && error.code === "P2025") {
+      return NextResponse.json({ error: "Không tìm thấy chương truyện!" }, { status: 404 });
+    }
     return NextResponse.json({ error: "Lỗi khi xóa chương!" }, { status: 500 });
   }
 }

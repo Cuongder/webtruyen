@@ -44,7 +44,7 @@ Hệ thống hỗ trợ 2 phương thức xác thực linh hoạt và bảo mậ
 ### 2.1. Xác thực bằng Mã Khóa Quản Trị Viên (Admin API Key - KHUYÊN DÙNG CHO API)
 * **Header khuyên dùng**: `x-api-key: <ADMIN_API_KEY>`
 * **Header chuẩn Bearer**: `Authorization: Bearer <ADMIN_API_KEY>`
-* **Mã khóa mặc định**: `mocthu_live_admin_key_2026_vibecode_998877`
+* **Mã khóa mặc định**: `<ADMIN_API_KEY>`
 * **Xem và quản lý trực tiếp trên Web**: Quản trị viên chỉ cần truy cập trang `/admin`, chọn Tab **"Tài liệu API & Khóa API Key"** để:
   * Xem mã khóa (hỗ trợ ẩn/hiện mã).
   * Sao chép mã 1-chạm vào khay nhớ tạm.
@@ -54,7 +54,7 @@ Hệ thống hỗ trợ 2 phương thức xác thực linh hoạt và bảo mậ
 > 🛡️ **Lưu ý bảo mật**: Khi sử dụng Admin API Key trong Header, hệ thống sẽ tự động định danh người gọi là Quản Trị Viên Tối Cao và cấp quyền thực thi mọi API quản trị (Tạo truyện, Đăng chương, Khóa/Mở khóa tác phẩm, Quản lý thành viên) mà không cần đăng nhập Cookie hay qua form giao diện.
 
 ### 2.2. Cơ chế Dự Phòng: JWT Session Cookie (Dành cho Web Browser)
-* Khi Quản trị viên đăng nhập trực tiếp trên giao diện website bằng tài khoản Admin (`hotprince` / `Napoleong112@`), trình duyệt sẽ lưu cookie `mocthu_session` (cờ `httpOnly: true`). Hệ thống tự động nhận diện cookie này nếu Request không truyền header `x-api-key`.
+* Khi Quản trị viên đăng nhập trực tiếp trên giao diện website bằng tài khoản Admin (`hotprince` / `<ADMIN_PASSWORD>`), trình duyệt sẽ lưu cookie `mocthu_session` (cờ `httpOnly: true`). Hệ thống tự động nhận diện cookie này nếu Request không truyền header `x-api-key`.
 
 ### 2.3. Các cấp bậc vai trò người dùng (Role):
 1. `GUEST`: Khách vãng lai chưa đăng nhập (chỉ xem truyện công khai, tìm kiếm).
@@ -65,13 +65,10 @@ Hệ thống hỗ trợ 2 phương thức xác thực linh hoạt và bảo mậ
 
 ---
 
-## 3. Tài khoản Trải nghiệm Mẫu (Demo Credentials)
+## 3. Tài khoản seed
 
-| Vai trò | Tên đăng nhập / Email | Mật khẩu | Quyền hạn |
-| :--- | :--- | :--- | :--- |
-| 👑 **Quản trị viên** | `hotprince` hoặc `admin@mocthu.vn` | `Napoleong112@` / `admin123` | Toàn quyền kiểm duyệt, khởi tạo tác phẩm, đăng chương |
-| 🖋️ **Tác giả** | `author@mocthu.vn` | `author123` | Tác giả ký hợp đồng (Cố Niệm Vũ) |
-| 📖 **Độc giả** | `reader@mocthu.vn` | `reader123` | Độc giả tiêu chuẩn (Lâm Phong) |
+Mật khẩu seed không lưu trong repository. Cấu hình `SEED_ADMIN_PASSWORD`,
+`SEED_AUTHOR_PASSWORD`, `SEED_READER_PASSWORD` khi chạy `npm run prisma:seed`.
 
 ---
 
@@ -362,7 +359,7 @@ Content-Type: application/json
 {
   "action": "login",
   "email": "hotprince",
-  "password": "Napoleong112@"
+  "password": "<ADMIN_PASSWORD>"
 }
 ```
 * **Đăng ký**:
@@ -374,7 +371,7 @@ Content-Type: application/json
   "action": "register",
   "email": "user@gmail.com",
   "username": "username123",
-  "password": "Password123@",
+  "password": "<USER_PASSWORD>",
   "name": "Độc Giả Thân Thiết",
   "role": "READER"
 }
@@ -404,7 +401,7 @@ Content-Type: application/json
 ```bash
 curl -X POST https://webtruyen-eta.vercel.app/api/admin/stories \
   -H "Content-Type: application/json" \
-  -H "x-api-key: mocthu_live_admin_key_2026_vibecode_998877" \
+  -H "x-api-key: <ADMIN_API_KEY>" \
   -d '{
     "title": "Kiếm Ma Độc Cô",
     "slug": "kiem-ma-doc-co",
@@ -421,7 +418,7 @@ curl -X POST https://webtruyen-eta.vercel.app/api/admin/stories \
 ```bash
 curl -X POST https://webtruyen-eta.vercel.app/api/admin/chapters \
   -H "Content-Type: application/json" \
-  -H "x-api-key: mocthu_live_admin_key_2026_vibecode_998877" \
+  -H "x-api-key: <ADMIN_API_KEY>" \
   -d '{
     "storyId": "kiem-ma-doc-co",
     "chapterNumber": 1,
@@ -434,13 +431,13 @@ curl -X POST https://webtruyen-eta.vercel.app/api/admin/chapters \
 #### C. Lấy hoặc Sinh lại mã khóa API Key Quản trị viên:
 ```bash
 # Lấy mã khóa hiện hành:
-curl -H "x-api-key: mocthu_live_admin_key_2026_vibecode_998877" \
+curl -H "x-api-key: <ADMIN_API_KEY>" \
   https://webtruyen-eta.vercel.app/api/admin/api-key
 
 # Sinh lại mã khóa ngẫu nhiên mới:
 curl -X POST https://webtruyen-eta.vercel.app/api/admin/api-key \
   -H "Content-Type: application/json" \
-  -H "x-api-key: mocthu_live_admin_key_2026_vibecode_998877" \
+  -H "x-api-key: <ADMIN_API_KEY>" \
   -d '{"action": "regenerate"}'
 ```
 
@@ -449,7 +446,7 @@ curl -X POST https://webtruyen-eta.vercel.app/api/admin/api-key \
 ### 8.2. JavaScript / TypeScript (`fetch` API với API Key)
 
 ```typescript
-const ADMIN_API_KEY = "mocthu_live_admin_key_2026_vibecode_998877";
+const ADMIN_API_KEY = "<ADMIN_API_KEY>";
 const BASE_URL = "https://webtruyen-eta.vercel.app"; // hoặc "http://localhost:3000" khi test local
 
 async function adminWorkflow() {
@@ -507,7 +504,7 @@ adminWorkflow().catch(console.error);
 import requests
 
 BASE_URL = "https://webtruyen-eta.vercel.app"  # hoặc "http://localhost:3000" khi test local
-ADMIN_API_KEY = "mocthu_live_admin_key_2026_vibecode_998877"
+ADMIN_API_KEY = "<ADMIN_API_KEY>"
 
 headers = {
     "Content-Type": "application/json",

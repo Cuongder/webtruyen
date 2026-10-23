@@ -1,13 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getSession } from "@/lib/auth";
-import { assignBadgeToUser, removeBadgeFromUser, getUserById, BADGES_DATA } from "@/lib/data-store";
+import { db } from "@/lib/db";
+import { requireAdminContext, writeAdminAudit } from "@/lib/admin";
+import { serializeAdminUser } from "@/lib/admin-read-model";
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await getSession();
-    if (!session || session.role !== "ADMIN") {
-      return NextResponse.json({ error: "Yêu cầu quyền Quản trị viên!" }, { status: 403 });
-    }
+    const context = await requireAdminContext(req);
+    if (context.response) return context.response;
 
     const body = await req.json();
     const { userId, badgeId, action = "assign" } = body;
@@ -19,8 +18,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const user = getUserById(userId);
-    const badge = BADGES_DATA.find((b) => b.id === badgeId);
+    const user = await db.user.findUnique({
+      where: { id: userId },
+      include: { profile: true, authorProfile: true, badges: { select: { badgeId: true } } },
+    });
+    const badge = await db.badge.findUnique({ where: { id: badgeId } });
 
     if (!user || !badge) {
       return NextResponse.json(
@@ -30,22 +32,51 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === "remove") {
-      removeBadgeFromUser(userId, badgeId, session.name);
+      await db.userBadge.deleteMany({ where: { userId, badgeId } });
+      await writeAdminAudit({
+        adminId: context.adminId,
+        action: "REMOVE_BADGE",
+        targetType: "BADGE",
+        targetId: badgeId,
+        details: { userId },
+      });
       return NextResponse.json({
         success: true,
-        message: `Đã thu hồi danh hiệu "${badge.name}" từ ${user.name}!`,
-        user,
+        message: `Đã thu hồi danh hiệu "${badge.name}" từ ${user.profile?.displayName || user.username}!`,
+        user: serializeAdminUser({
+          ...user,
+          badges: user.badges.filter((entry) => entry.badgeId !== badgeId),
+        }),
       });
     } else {
-      assignBadgeToUser(userId, badgeId, session.name);
+      await db.userBadge.upsert({
+        where: { userId_badgeId: { userId, badgeId } },
+        update: {},
+        create: { userId, badgeId },
+      });
+      await writeAdminAudit({
+        adminId: context.adminId,
+        action: "ASSIGN_BADGE",
+        targetType: "BADGE",
+        targetId: badgeId,
+        details: { userId },
+      });
       return NextResponse.json({
         success: true,
-        message: `Đã trao tặng danh hiệu "${badge.name}" cho ${user.name}!`,
-        user,
+        message: `Đã trao tặng danh hiệu "${badge.name}" cho ${user.profile?.displayName || user.username}!`,
+        user: serializeAdminUser({
+          ...user,
+          badges: user.badges.some((entry) => entry.badgeId === badgeId)
+            ? user.badges
+            : [...user.badges, { badgeId }],
+        }),
       });
     }
   } catch (error) {
     console.error("Assign Badge Error:", error);
+    if (error && typeof error === "object" && "code" in error && error.code === "P2002") {
+      return NextResponse.json({ error: "Danh hiệu đã được gán cho người dùng này." }, { status: 409 });
+    }
     return NextResponse.json({ error: "Lỗi máy chủ khi gán danh hiệu!" }, { status: 500 });
   }
 }

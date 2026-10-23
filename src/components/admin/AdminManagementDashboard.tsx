@@ -143,7 +143,7 @@ export function AdminManagementDashboard({
   };
 
   // ================= ADMIN API KEY & DOCS STATE =================
-  const [apiKey, setApiKey] = useState<string>("mocthu_live_admin_key_2026_vibecode_998877");
+  const [apiKey, setApiKey] = useState<string>("");
   const [isApiKeyVisible, setIsApiKeyVisible] = useState(false);
   const [isKeyCopied, setIsKeyCopied] = useState(false);
   const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null);
@@ -156,9 +156,7 @@ export function AdminManagementDashboard({
     fetch("/api/admin/api-key")
       .then((res) => res.json())
       .then((data) => {
-        if (data.success && data.apiKey) {
-          setApiKey(data.apiKey);
-        }
+        if (data.success && data.apiKey) setApiKey(data.apiKey);
       })
       .catch(() => {});
   }, []);
@@ -1222,7 +1220,7 @@ export function AdminManagementDashboard({
                 <div className="relative flex-1 flex items-center rounded-xl border border-accent-gold/30 bg-bg-base/90 px-3.5 py-2.5 font-mono text-xs sm:text-sm text-accent-gold shadow-inner overflow-x-auto">
                   <Terminal className="h-4 w-4 mr-2 text-ink-muted shrink-0" />
                   <span className="select-all whitespace-nowrap">
-                    {isApiKeyVisible ? apiKey : "mocthu_live_••••••••••••••••••••••••••••••••"}
+                    {isApiKeyVisible && apiKey ? apiKey : "Được cấu hình trong secret manager"}
                   </span>
                 </div>
 

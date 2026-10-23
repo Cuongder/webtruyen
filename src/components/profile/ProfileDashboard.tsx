@@ -662,7 +662,7 @@ export function ProfileDashboard({
                             type="button"
                             onClick={() =>
                               alert(
-                                "Vui lòng gửi email đến: hotprince@mocthu.vn kèm lý do thay đổi tên hiển thị để Admin xét duyệt và cập nhật."
+                                "Vui lòng gửi email đến: contact@mocthu.vn kèm lý do thay đổi tên hiển thị để Admin xét duyệt và cập nhật."
                               )
                             }
                             className="mt-1.5 inline-flex items-center gap-1.5 rounded-lg bg-accent-gold/15 px-2.5 py-1 text-[11px] font-bold text-accent-gold hover:bg-accent-gold/25 border border-accent-gold/30 active:scale-95 transition-colors"

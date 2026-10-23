@@ -4,8 +4,10 @@ import { MobileHeader } from "@/components/navigation/MobileHeader";
 import { DesktopHeader } from "@/components/navigation/DesktopHeader";
 import { BottomNavigation } from "@/components/navigation/BottomNavigation";
 import { StoryCardMobile } from "@/components/story/StoryCardMobile";
-import { STORIES_DATA, GENRES_DATA } from "@/lib/data-store";
+import { getPublicGenres, getPublicStories } from "@/lib/read-model";
 import { getSession } from "@/lib/auth";
+
+export const dynamic = "force-dynamic";
 
 interface DiscoverPageProps {
   searchParams: Promise<{
@@ -19,19 +21,16 @@ export default async function DiscoverPage({ searchParams }: DiscoverPageProps) 
   const { genre, status, sort } = await searchParams;
   const session = await getSession();
 
-  let stories = [...STORIES_DATA];
-
-  if (genre) {
-    stories = stories.filter((s) =>
-      s.genres.some((g) => g.toLowerCase() === genre.toLowerCase())
-    );
-  }
-
-  if (status) {
-    stories = stories.filter(
-      (s) => s.status.toLowerCase() === status.toLowerCase()
-    );
-  }
+  let stories = await getPublicStories({
+    genre: genre || undefined,
+    status:
+      status === "completed"
+        ? "COMPLETED"
+        : status === "ongoing"
+          ? "ONGOING"
+          : undefined,
+  });
+  const genres = await getPublicGenres();
 
   if (sort === "popular") {
     stories.sort((a, b) => b.viewsCount - a.viewsCount);
@@ -107,12 +106,12 @@ export default async function DiscoverPage({ searchParams }: DiscoverPageProps) 
 
         {/* Genre Selector Pills */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar text-xs">
-          {GENRES_DATA.map((g) => (
+          {genres.map((g) => (
             <Link
               key={g.id}
-              href={`/discover?genre=${encodeURIComponent(g.name)}`}
+              href={`/discover?genre=${encodeURIComponent(g.slug)}`}
               className={`shrink-0 rounded-lg px-3 py-1 text-xs transition-colors ${
-                genre?.toLowerCase() === g.name.toLowerCase()
+                genre?.toLowerCase() === g.slug.toLowerCase()
                   ? "bg-surface-elevated text-accent-gold border border-accent-gold/40 font-medium"
                   : "bg-surface/70 text-ink-muted hover:text-ink-primary"
               }`}

@@ -8,15 +8,20 @@ import { ContinueReadingCard } from "@/components/story/ContinueReadingCard";
 import { StoryCardVertical } from "@/components/story/StoryCardVertical";
 import { StoryCardMobile } from "@/components/story/StoryCardMobile";
 import { GenreChips } from "@/components/story/GenreChips";
-import { STORIES_DATA } from "@/lib/data-store";
+import { getPublicGenres } from "@/lib/read-model";
+import { getPublicStories } from "@/lib/read-model";
 import { getSession } from "@/lib/auth";
 
+export const dynamic = "force-dynamic";
+
 export default async function HomePage() {
+  const genres = await getPublicGenres();
   const session = await getSession();
 
-  const featuredStory = STORIES_DATA.find((s) => s.featured) || STORIES_DATA[0];
-  const trendingStories = [...STORIES_DATA].sort((a, b) => b.viewsCount - a.viewsCount);
-  const latestStories = [...STORIES_DATA].sort(
+  const stories = await getPublicStories();
+  const featuredStory = stories.find((s) => s.featured) || stories[0];
+  const trendingStories = [...stories].sort((a, b) => b.viewsCount - a.viewsCount);
+  const latestStories = [...stories].sort(
     (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
   );
 
@@ -30,7 +35,7 @@ export default async function HomePage() {
       <main className="mx-auto w-full max-w-7xl px-4 py-4 sm:px-6 lg:px-8 space-y-7">
         {/* Genre Quick Filter Chips */}
         <section aria-label="Thể loại truyện">
-          <GenreChips />
+          <GenreChips genres={genres} />
         </section>
 
         {/* Hero Spotlight Banner */}
@@ -154,7 +159,7 @@ export default async function HomePage() {
           </div>
 
           <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar sm:gap-4">
-            {STORIES_DATA.filter((s) => s.status === "COMPLETED").map((story) => (
+            {stories.filter((s) => s.status === "COMPLETED").map((story) => (
               <StoryCardVertical key={story.id} story={story} />
             ))}
           </div>

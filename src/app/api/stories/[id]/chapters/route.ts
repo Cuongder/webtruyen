@@ -1,23 +1,37 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getSession } from "@/lib/auth";
-import { STORIES_DATA, CHAPTERS_DATA, type ChapterItem } from "@/lib/data-store";
+import { canManageChapter, canReadStory } from "@/lib/access-control";
+import { createChapter, findChaptersByStory } from "@/lib/repositories/chapter.repository";
+import { findStoryByIdOrSlug } from "@/lib/repositories/story.repository";
+import { serializeChapter } from "@/lib/story-mapper";
 
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const story = STORIES_DATA.find((s) => s.id === id || s.slug === id);
+  const story = await findStoryByIdOrSlug(id);
 
   if (!story) {
     return NextResponse.json({ error: "Không tìm thấy tác phẩm!" }, { status: 404 });
   }
 
-  const chapters = CHAPTERS_DATA[story.slug] || [];
+  const session = await getSession();
+  if (!canReadStory(story, session)) {
+    return NextResponse.json({ error: "Tác phẩm không công khai." }, { status: 403 });
+  }
+
+  const chapters = await findChaptersByStory(story.id, {
+    includeAllStatuses: Boolean(session && (session.role === "ADMIN" || session.id === story.authorId)),
+  });
   return NextResponse.json({
     success: true,
     total: chapters.length,
-    chapters,
+    chapters: chapters.map((chapter) => ({
+      ...chapter,
+      storySlug: story.slug,
+      publishedAt: chapter.publishedAt?.toISOString() || chapter.createdAt.toISOString(),
+    })),
   });
 }
 
@@ -32,14 +46,14 @@ export async function POST(
     }
 
     const { id } = await params;
-    const story = STORIES_DATA.find((s) => s.id === id || s.slug === id);
+    const story = await findStoryByIdOrSlug(id);
 
     if (!story) {
       return NextResponse.json({ error: "Không tìm thấy tác phẩm!" }, { status: 404 });
     }
 
     // Guard: Only story author or admin can add chapters
-    if (session.role !== "ADMIN" && story.authorId !== session.id) {
+    if (!canManageChapter(story, session)) {
       return NextResponse.json(
         { error: "Bạn không có quyền đăng chương cho tác phẩm này!" },
         { status: 403 }
@@ -63,9 +77,7 @@ export async function POST(
       );
     }
 
-    const existingChapters = CHAPTERS_DATA[story.slug] || [];
-    const chapterNumber =
-      customNumber !== undefined ? Number(customNumber) : existingChapters.length + 1;
+    const chapterNumber = customNumber !== undefined ? Number(customNumber) : undefined;
 
     // Generate chapter slug
     const slug =
@@ -85,36 +97,30 @@ export async function POST(
       ? `${content}\n\n---\n*Lời tác giả: ${authorNote}*`
       : content;
 
-    const newChapter: ChapterItem = {
-      id: `ch-${story.id}-${Date.now()}`,
+    const newChapter = await createChapter({
       storyId: story.id,
-      storySlug: story.slug,
       chapterNumber,
-      title: title.startsWith("Chương") ? title : `Chương ${chapterNumber}: ${title}`,
+      title: title.startsWith("Chương") ? title : `Chương ${chapterNumber || 1}: ${title}`,
       slug,
       content: fullContent,
       wordCount,
-      publishedAt: new Date().toISOString(),
-    };
-
-    if (!CHAPTERS_DATA[story.slug]) {
-      CHAPTERS_DATA[story.slug] = [];
-    }
-
-    CHAPTERS_DATA[story.slug].push(newChapter);
-
-    // Update story counters
-    story.totalChapters = CHAPTERS_DATA[story.slug].length;
-    story.wordCount = (story.wordCount || 0) + wordCount;
-    story.updatedAt = new Date().toISOString();
+      status:
+        status === "DRAFT" || status === "SCHEDULED" || status === "TRASH"
+          ? status
+          : "PUBLISHED",
+    });
 
     return NextResponse.json({
       success: true,
       message: `Đăng thành công ${newChapter.title}!`,
-      chapter: newChapter,
+      chapter: serializeChapter({ ...newChapter, story: { slug: story.slug } }),
     });
   } catch (error) {
     console.error("Create chapter error:", error);
+    if (error && typeof error === "object" && "code" in error) {
+      if (error.code === "P2002") return NextResponse.json({ error: "Số chương hoặc slug đã tồn tại." }, { status: 409 });
+      if (error.code === "P2025") return NextResponse.json({ error: "Không tìm thấy tác phẩm!" }, { status: 404 });
+    }
     return NextResponse.json({ error: "Lỗi máy chủ khi đăng chương!" }, { status: 500 });
   }
 }

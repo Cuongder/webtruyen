@@ -1,25 +1,30 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getSession } from "@/lib/auth";
-import { BADGES_DATA, deleteBadge } from "@/lib/data-store";
+import { db } from "@/lib/db";
+import { requireAdminContext, writeAdminAudit } from "@/lib/admin";
 
 export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getSession();
-    if (!session || session.role !== "ADMIN") {
-      return NextResponse.json({ error: "Yêu cầu quyền Quản trị viên!" }, { status: 403 });
-    }
+    const context = await requireAdminContext(_req);
+    if (context.response) return context.response;
 
     const { id } = await params;
-    const badge = BADGES_DATA.find((b) => b.id === id);
+    const badge = await db.badge.findUnique({ where: { id } });
 
     if (!badge) {
       return NextResponse.json({ error: "Không tìm thấy danh hiệu!" }, { status: 404 });
     }
 
-    deleteBadge(badge.id, session.name);
+    await db.badge.delete({ where: { id: badge.id } });
+    await writeAdminAudit({
+      adminId: context.adminId,
+      action: "DELETE_BADGE",
+      targetType: "BADGE",
+      targetId: badge.id,
+      details: { name: badge.name },
+    });
 
     return NextResponse.json({
       success: true,
@@ -27,6 +32,9 @@ export async function DELETE(
     });
   } catch (error) {
     console.error("Delete Badge Error:", error);
+    if (error && typeof error === "object" && "code" in error && error.code === "P2025") {
+      return NextResponse.json({ error: "Không tìm thấy danh hiệu!" }, { status: 404 });
+    }
     return NextResponse.json({ error: "Lỗi khi xóa danh hiệu!" }, { status: 500 });
   }
 }

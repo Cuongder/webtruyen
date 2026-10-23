@@ -1,140 +1,92 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { verifyAdminRequest } from "@/lib/auth";
-import {
-  STORIES_DATA,
-  CHAPTERS_DATA,
-  adminCreateChapter,
-} from "@/lib/data-store";
+import { requireAdminContext, writeAdminAudit } from "@/lib/admin";
+import { findStoryByIdOrSlug } from "@/lib/repositories/story.repository";
+import { createChapter, findChaptersByStory } from "@/lib/repositories/chapter.repository";
+import { serializeChapter } from "@/lib/story-mapper";
 
 export async function GET(req: NextRequest) {
-  const auth = await verifyAdminRequest(req);
-  if (!auth.authorized) {
-    return NextResponse.json({ error: auth.error || "Yêu cầu quyền Quản trị viên!" }, { status: 403 });
-  }
+  const context = await requireAdminContext(req);
+  if ("response" in context) return context.response;
 
-  const { searchParams } = new URL(req.url);
-  const storyIdOrSlug = searchParams.get("storyId") || searchParams.get("storySlug");
+  const params = new URL(req.url).searchParams;
+  const identifier = params.get("storyId") || params.get("storySlug");
+  if (!identifier) return NextResponse.json({ error: "Thiếu storyId/storySlug." }, { status: 400 });
 
-  if (!storyIdOrSlug) {
-    return NextResponse.json(
-      { error: "Vui lòng cung cấp storyId hoặc storySlug!" },
-      { status: 400 }
-    );
-  }
+  const story = await findStoryByIdOrSlug(identifier);
+  if (!story) return NextResponse.json({ error: "Không tìm thấy tác phẩm!" }, { status: 404 });
 
-  const story = STORIES_DATA.find(
-    (s) => s.id === storyIdOrSlug || s.slug === storyIdOrSlug
-  );
-  if (!story) {
-    return NextResponse.json({ error: "Không tìm thấy tác phẩm!" }, { status: 404 });
-  }
-
-  const chapters = CHAPTERS_DATA[story.slug] || [];
-
+  const chapters = await findChaptersByStory(story.id, { includeAllStatuses: true });
   return NextResponse.json({
     success: true,
-    story: {
-      id: story.id,
-      title: story.title,
-      slug: story.slug,
-      totalChapters: chapters.length,
-    },
-    chapters,
+    story: { id: story.id, title: story.title, slug: story.slug, totalChapters: chapters.length },
+    chapters: chapters.map((chapter) => ({ ...chapter, storySlug: story.slug })),
   });
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const auth = await verifyAdminRequest(req);
-    if (!auth.authorized) {
-      return NextResponse.json({ error: auth.error || "Yêu cầu quyền Quản trị viên!" }, { status: 403 });
-    }
+    const context = await requireAdminContext(req);
+    if ("response" in context) return context.response;
 
     const body = await req.json();
-    const {
-      storyId,
-      storySlug,
+    const identifier = body.storyId || body.storySlug;
+    const story = typeof identifier === "string" ? await findStoryByIdOrSlug(identifier) : null;
+    if (!story) return NextResponse.json({ error: "Không tìm thấy tác phẩm!" }, { status: 404 });
+
+    const title = typeof body.title === "string" ? body.title.trim() : "";
+    const content = typeof body.content === "string" ? body.content.trim() : "";
+    if (!title || !content) {
+      return NextResponse.json({ error: "Thiếu tên hoặc nội dung chương." }, { status: 400 });
+    }
+
+    const number = body.chapterNumber === undefined ? undefined : Number(body.chapterNumber);
+    if (number !== undefined && (!Number.isInteger(number) || number < 1)) {
+      return NextResponse.json({ error: "chapterNumber không hợp lệ." }, { status: 400 });
+    }
+
+    const chapterNumber = number || (await findChaptersByStory(story.id, { includeAllStatuses: true })).length + 1;
+    const slug =
+      typeof body.slug === "string" && body.slug.trim()
+        ? body.slug.trim()
+        : `chuong-${chapterNumber}-${title.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[đĐ]/g, "d").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")}`;
+
+    const chapter = await createChapter({
+      storyId: story.id,
       chapterNumber,
-      title,
+      title: title.startsWith("Chương") ? title : `Chương ${chapterNumber}: ${title}`,
       slug,
       content,
-      status = "PUBLISHED",
-      notifyFollowers = true,
-    } = body;
+      status:
+        body.status === "DRAFT" ||
+        body.status === "SCHEDULED" ||
+        body.status === "TRASH"
+          ? body.status
+          : "PUBLISHED",
+    });
 
-    const targetStoryIdentifier = storyId || storySlug;
-
-    if (!targetStoryIdentifier) {
-      return NextResponse.json(
-        { error: "Vui lòng cung cấp ID hoặc Slug của tác phẩm!" },
-        { status: 400 }
-      );
-    }
-
-    if (!title || !title.trim()) {
-      return NextResponse.json(
-        { error: "Vui lòng nhập tên chương truyện!" },
-        { status: 400 }
-      );
-    }
-
-    if (!content || !content.trim()) {
-      return NextResponse.json(
-        { error: "Vui lòng nhập nội dung chương truyện!" },
-        { status: 400 }
-      );
-    }
-
-    const story = STORIES_DATA.find(
-      (s) => s.id === targetStoryIdentifier || s.slug === targetStoryIdentifier
-    );
-    if (!story) {
-      return NextResponse.json(
-        { error: "Không tìm thấy tác phẩm mục tiêu trên hệ thống!" },
-        { status: 404 }
-      );
-    }
-
-    const result = adminCreateChapter(
-      {
-        storyIdOrSlug: story.id,
-        chapterNumber: chapterNumber ? parseInt(chapterNumber, 10) : undefined,
-        title,
-        slug,
-        content,
-        status,
-      },
-      auth.adminName || "Admin"
-    );
-
-    if (!result) {
-      return NextResponse.json(
-        { error: "Không thể thêm chương cho tác phẩm này!" },
-        { status: 500 }
-      );
-    }
+    await writeAdminAudit({
+      adminId: context.adminId,
+      action: "CREATE_CHAPTER",
+      targetType: "CHAPTER",
+      targetId: chapter.id,
+      details: { storyId: story.id, title: chapter.title },
+    });
 
     return NextResponse.json(
       {
         success: true,
-        message: `Đã đăng ${result.chapter.title} cho tác phẩm "${story.title}" thành công!`,
-        chapter: result.chapter,
-        updatedStory: {
-          id: story.id,
-          title: story.title,
-          slug: story.slug,
-          totalChapters: story.totalChapters,
-          wordCount: story.wordCount,
-          updatedAt: story.updatedAt,
-        },
+        message: `Đã đăng ${chapter.title} cho tác phẩm "${story.title}".`,
+        chapter: serializeChapter({ ...chapter, story: { slug: story.slug } }),
+        updatedStory: { id: story.id, title: story.title, slug: story.slug },
       },
       { status: 201 }
     );
   } catch (error) {
     console.error("Admin Create Chapter Error:", error);
-    return NextResponse.json(
-      { error: "Lỗi máy chủ khi đăng chương truyện!" },
-      { status: 500 }
-    );
+    if (error && typeof error === "object" && "code" in error) {
+      if (error.code === "P2002") return NextResponse.json({ error: "Số chương hoặc slug đã tồn tại." }, { status: 409 });
+      if (error.code === "P2025") return NextResponse.json({ error: "Không tìm thấy tác phẩm!" }, { status: 404 });
+    }
+    return NextResponse.json({ error: "Lỗi máy chủ khi đăng chương truyện!" }, { status: 500 });
   }
 }

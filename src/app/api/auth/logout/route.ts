@@ -1,16 +1,27 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { clearSessionCookie } from "@/lib/auth";
+import { clearSessionCookie, getSession, revokeUserSessions } from "@/lib/auth";
+
+async function revokeCurrentSession() {
+  const session = await getSession();
+  if (session) await revokeUserSessions(session.id);
+  await clearSessionCookie();
+}
+
+function safeRedirect(value: string | null): string {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) return "/login";
+  return value;
+}
 
 export async function POST(req: NextRequest) {
   try {
-    await clearSessionCookie();
+    await revokeCurrentSession();
 
     const contentType = req.headers.get("content-type") || "";
     if (contentType.includes("application/json")) {
       return NextResponse.json({ success: true, message: "Đăng xuất thành công" });
     }
 
-    const redirectUrl = req.nextUrl.searchParams.get("redirect") || "/login";
+    const redirectUrl = safeRedirect(req.nextUrl.searchParams.get("redirect"));
     return NextResponse.redirect(new URL(redirectUrl, req.url), { status: 303 });
   } catch (error) {
     console.error("Logout error:", error);
@@ -20,9 +31,9 @@ export async function POST(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   try {
-    await clearSessionCookie();
+    await revokeCurrentSession();
 
-    const redirectUrl = req.nextUrl.searchParams.get("redirect") || "/login";
+    const redirectUrl = safeRedirect(req.nextUrl.searchParams.get("redirect"));
     return NextResponse.redirect(new URL(redirectUrl, req.url), { status: 303 });
   } catch (error) {
     console.error("Logout GET error:", error);

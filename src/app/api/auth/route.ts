@@ -1,13 +1,33 @@
+export async function GET() {
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json({ authenticated: false, user: null }, { status: 401 });
+  }
+  return NextResponse.json({ authenticated: true, user: session });
+}
+
 import { NextResponse } from "next/server";
 import {
   setSessionCookie,
   clearSessionCookie,
-  DEMO_USERS,
+  getSession,
+  revokeUserSessions,
   verifyPassword,
   hashPassword,
   type SessionUser,
   type UserRole,
 } from "@/lib/auth";
+import { userRepository } from "@/lib/repositories";
+
+// ponytail: Basic regex email/username validation; upgrade to Zod schema validator when request surface grows.
+
+function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function isValidUsername(username: string): boolean {
+  return /^[a-zA-Z0-9_]{3,30}$/.test(username);
+}
 
 export async function POST(req: Request) {
   try {
@@ -41,25 +61,33 @@ export async function POST(req: Request) {
     }
 
     if (action === "login") {
-      if (!email || !password) {
+      const identifier = (email || username || "").trim();
+      if (!identifier || !password) {
         return NextResponse.json(
-          { error: "Vui lòng nhập email và mật khẩu!" },
+          { error: "Vui lòng nhập tài khoản/email và mật khẩu!" },
           { status: 400 }
         );
       }
-      // Check demo credentials by email or username
-      const lookupKey = email.toLowerCase().trim();
-      const user =
-        DEMO_USERS[lookupKey] ||
-        Object.values(DEMO_USERS).find(
-          (u) =>
-            u.username.toLowerCase() === lookupKey ||
-            u.email.toLowerCase() === lookupKey
-        );
+
+      const user = await userRepository.findUserByEmailOrUsername(identifier);
       if (!user) {
         return NextResponse.json(
           { error: "Email hoặc mật khẩu không chính xác!" },
           { status: 401 }
+        );
+      }
+
+      if (user.status === "BANNED") {
+        return NextResponse.json(
+          { error: "Tài khoản của bạn đã bị khóa vĩnh viễn!" },
+          { status: 403 }
+        );
+      }
+
+      if (user.status === "SUSPENDED") {
+        return NextResponse.json(
+          { error: "Tài khoản của bạn đang bị tạm ngưng hoạt động!" },
+          { status: 403 }
         );
       }
 
@@ -71,43 +99,101 @@ export async function POST(req: Request) {
         );
       }
 
-      await setSessionCookie({
+      const sessionUser: SessionUser = {
         id: user.id,
         email: user.email,
         username: user.username,
-        name: user.name,
-        role: user.role,
-        penName: user.penName,
-        avatarUrl: user.avatarUrl,
-      });
+        name: user.profile?.displayName || user.username,
+        role: user.role as UserRole,
+        status: user.status,
+        penName: user.authorProfile?.penName || undefined,
+        avatarUrl: user.profile?.avatarUrl || undefined,
+        sessionVersion: user.sessionVersion,
+      };
 
-      return NextResponse.json({ success: true, user });
+      await setSessionCookie(sessionUser);
+      return NextResponse.json({ success: true, user: sessionUser });
     }
 
     if (action === "register") {
       if (!email || !password || !username) {
         return NextResponse.json(
-          { error: "Vui lòng nhập đầy đủ email, tài khoản và mật khẩu!" },
+          { error: "Vui lòng nhập đầy đủ email, tên người dùng và mật khẩu!" },
           { status: 400 }
         );
       }
 
+      const cleanEmail = email.toLowerCase().trim();
+      const cleanUsername = username.toLowerCase().trim();
+
+      if (!isValidEmail(cleanEmail)) {
+        return NextResponse.json(
+          { error: "Địa chỉ email không đúng định dạng!" },
+          { status: 400 }
+        );
+      }
+
+      if (!isValidUsername(cleanUsername)) {
+        return NextResponse.json(
+          { error: "Tên tài khoản từ 3-30 ký tự, chỉ gồm chữ cái, số và dấu gạch dưới!" },
+          { status: 400 }
+        );
+      }
+
+      if (password.length < 6) {
+        return NextResponse.json(
+          { error: "Mật khẩu phải có tối thiểu 6 ký tự!" },
+          { status: 400 }
+        );
+      }
+
+      const existingByEmail = await userRepository.findUserByEmail(cleanEmail);
+      if (existingByEmail) {
+        return NextResponse.json(
+          { error: "Email này đã được đăng ký!" },
+          { status: 409 }
+        );
+      }
+
+      const existingByUsername = await userRepository.findUserByUsername(cleanUsername);
+      if (existingByUsername) {
+        return NextResponse.json(
+          { error: "Tên tài khoản này đã được sử dụng!" },
+          { status: 409 }
+        );
+      }
+
+      const passwordHash = await hashPassword(password);
       const assignedRole: UserRole = role === "AUTHOR" ? "AUTHOR" : "READER";
-      const newUser: SessionUser = {
-        id: `user-${Date.now()}`,
-        email: email.toLowerCase(),
-        username: username.toLowerCase(),
-        name: name || username,
+
+      const createdUser = await userRepository.createUser({
+        email: cleanEmail,
+        username: cleanUsername,
+        passwordHash,
         role: assignedRole,
-        penName: role === "AUTHOR" ? penName || username : undefined,
-        avatarUrl: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=80",
+        displayName: name?.trim() || cleanUsername,
+        penName: role === "AUTHOR" ? (penName?.trim() || name?.trim() || cleanUsername) : undefined,
+      });
+
+      const sessionUser: SessionUser = {
+        id: createdUser.id,
+        email: createdUser.email,
+        username: createdUser.username,
+        name: createdUser.profile?.displayName || createdUser.username,
+        role: createdUser.role as UserRole,
+        status: createdUser.status,
+        penName: createdUser.authorProfile?.penName || undefined,
+        avatarUrl: createdUser.profile?.avatarUrl || undefined,
+        sessionVersion: createdUser.sessionVersion,
       };
 
-      await setSessionCookie(newUser);
-      return NextResponse.json({ success: true, user: newUser });
+      await setSessionCookie(sessionUser);
+      return NextResponse.json({ success: true, user: sessionUser }, { status: 201 });
     }
 
     if (action === "logout") {
+      const session = await getSession();
+      if (session) await revokeUserSessions(session.id);
       await clearSessionCookie();
       if (!contentType.includes("application/json")) {
         return NextResponse.redirect(new URL("/login", req.url));
@@ -115,11 +201,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true });
     }
 
-    return NextResponse.json({ error: "Yêu cầu không hợp lệ" }, { status: 400 });
+    return NextResponse.json({ error: "Yêu cầu không hợp lệ!" }, { status: 400 });
   } catch (error) {
     console.error("Auth API Error:", error);
     return NextResponse.json(
-      { error: "Lỗi máy chủ trong quá trình xác thực" },
+      { error: "Lỗi máy chủ trong quá trình xác thực!" },
       { status: 500 }
     );
   }
