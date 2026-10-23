@@ -1,41 +1,32 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getSession } from "@/lib/auth";
-import { STORIES_DATA, CHAPTERS_DATA, type StoryItem } from "@/lib/data-store";
+import { createStory, findStories } from "@/lib/repositories/story.repository";
+import { serializeStory } from "@/lib/story-mapper";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const search = searchParams.get("q")?.toLowerCase();
+  const search = searchParams.get("q") || undefined;
   const genre = searchParams.get("genre");
   const status = searchParams.get("status");
   const author = searchParams.get("author");
 
-  let filtered = [...STORIES_DATA];
-
-  if (search) {
-    filtered = filtered.filter(
-      (s) =>
-        s.title.toLowerCase().includes(search) ||
-        s.authorName.toLowerCase().includes(search) ||
-        (s.authorPenName && s.authorPenName.toLowerCase().includes(search))
-    );
-  }
-
-  if (genre) {
-    filtered = filtered.filter((s) => s.genres.includes(genre));
-  }
-
-  if (status) {
-    filtered = filtered.filter((s) => s.status === status);
-  }
-
-  if (author) {
-    filtered = filtered.filter((s) => s.authorId === author);
-  }
+  const result = await findStories({
+    search,
+    genre: genre || undefined,
+    status:
+      status === "COMPLETED" || status === "DRAFT" || status === "HIATUS"
+        ? status
+        : status === "ONGOING"
+          ? "ONGOING"
+          : undefined,
+    authorId: author || undefined,
+    visibility: "PUBLIC",
+  });
 
   return NextResponse.json({
     success: true,
-    total: filtered.length,
-    stories: filtered,
+    total: result.total,
+    stories: result.stories.map(serializeStory),
   });
 }
 
@@ -82,40 +73,35 @@ export async function POST(req: NextRequest) {
         "-" +
         Date.now().toString().slice(-4);
 
-    const newStory: StoryItem = {
-      id: `story-${Date.now()}`,
-      title,
+    const story = await createStory({
+      title: title.trim(),
       slug,
       authorId: session.id,
-      authorName: session.name,
-      authorPenName: session.penName || session.name,
-      authorAvatar: session.avatarUrl || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80",
-      coverUrl,
-      shortDescription,
-      fullDescription: fullDescription || shortDescription,
-      status: status as "ONGOING" | "COMPLETED" | "DRAFT",
-      genres: genreIds.length > 0 ? genreIds : ["tien-hiep"],
-      tags: tags.length > 0 ? tags : ["Sáng Tác Việt", "Mộc Thư"],
-      viewsCount: 0,
-      followersCount: 0,
-      ratingScore: 5.0,
-      ratingsCount: 1,
-      totalChapters: 0,
-      wordCount: 0,
-      featured: false,
-      updatedAt: new Date().toISOString(),
-    };
-
-    STORIES_DATA.unshift(newStory);
-    CHAPTERS_DATA[newStory.slug] = [];
+      shortDescription: shortDescription.trim(),
+      fullDescription: fullDescription?.trim() || shortDescription.trim(),
+      coverUrl: coverUrl.trim(),
+      bannerUrl: bannerUrl?.trim() || undefined,
+      status:
+        status === "COMPLETED" || status === "DRAFT" || status === "HIATUS"
+          ? status
+          : "ONGOING",
+      genreSlugs: Array.isArray(genreIds) ? genreIds : [],
+      tags: Array.isArray(tags) ? tags : [],
+    });
 
     return NextResponse.json({
       success: true,
       message: "Tạo truyện thành công!",
-      story: newStory,
+      story: serializeStory(story),
     });
   } catch (error) {
     console.error("Create Story Error:", error);
+    if (error && typeof error === "object" && "code" in error && error.code === "P2002") {
+      return NextResponse.json({ error: "Slug truyện đã tồn tại." }, { status: 409 });
+    }
+    if (error && typeof error === "object" && "code" in error && error.code === "P2025") {
+      return NextResponse.json({ error: "Không tìm thấy tác giả hoặc thể loại." }, { status: 404 });
+    }
     return NextResponse.json(
       { error: "Lỗi máy chủ khi đăng truyện!" },
       { status: 500 }

@@ -5,8 +5,10 @@ import { MobileHeader } from "@/components/navigation/MobileHeader";
 import { DesktopHeader } from "@/components/navigation/DesktopHeader";
 import { BottomNavigation } from "@/components/navigation/BottomNavigation";
 import { StoryCardMobile } from "@/components/story/StoryCardMobile";
-import { GENRES_DATA, STORIES_DATA } from "@/lib/data-store";
+import { getPublicGenres, getPublicStories } from "@/lib/read-model";
 import { getSession } from "@/lib/auth";
+
+export const dynamic = "force-dynamic";
 
 interface GenrePageProps {
   params: Promise<{ slug: string }>;
@@ -14,16 +16,15 @@ interface GenrePageProps {
 
 export default async function GenrePage({ params }: GenrePageProps) {
   const { slug } = await params;
-  const genre = GENRES_DATA.find((g) => g.slug === slug);
+  const genres = await getPublicGenres();
+  const genre = genres.find((g) => g.slug === slug);
 
   if (!genre) {
     notFound();
   }
 
   const session = await getSession();
-  const storiesInGenre = STORIES_DATA.filter((s) =>
-    s.genres.some((g) => g.toLowerCase() === genre.name.toLowerCase())
-  );
+  const storiesInGenre = await getPublicStories({ genre: slug });
 
   return (
     <div className="flex min-h-screen flex-col bg-bg-base text-ink-primary pb-20 md:pb-12">

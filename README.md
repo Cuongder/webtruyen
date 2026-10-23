@@ -72,15 +72,18 @@ Mở trình duyệt tại [http://localhost:3000](http://localhost:3000).
 
 ---
 
-## 👥 Tài khoản Trải nghiệm Mẫu (Demo Accounts)
+## 👥 Tài khoản seed
 
-Hệ thống tích hợp sẵn các tài khoản thử nghiệm trên giao diện Đăng nhập:
+Seed yêu cầu mật khẩu truyền qua môi trường:
 
-| Vai trò | Email đăng nhập | Mật khẩu | Quyền hạn |
-| :--- | :--- | :--- | :--- |
-| **Độc giả** | `reader@mocthu.vn` | `reader123` | Đọc truyện, lưu tủ sách, đánh dấu trang, bình luận |
-| **Tác giả** | `author@mocthu.vn` | `author123` | Toàn quyền độc giả + Author Studio, tạo truyện, viết chương |
-| **Quản trị** | `admin@mocthu.vn` | `admin123` | Toàn quyền hệ thống + Bảng điều khiển Admin kiểm duyệt |
+```bash
+$env:SEED_ADMIN_PASSWORD="..."
+$env:SEED_AUTHOR_PASSWORD="..."
+$env:SEED_READER_PASSWORD="..."
+npm run prisma:seed
+```
+
+Không lưu mật khẩu seed trong repository hoặc giao diện đăng nhập.
 
 ---
 

@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { Search as SearchIcon, ArrowLeft, X, BookOpen, Clock, Tag } from "lucide-react";
 import { StoryCardMobile } from "@/components/story/StoryCardMobile";
 import { BottomNavigation } from "@/components/navigation/BottomNavigation";
-import { STORIES_DATA } from "@/lib/data-store";
+import type { StoryItem } from "@/lib/data-store";
 
 const POPULAR_KEYWORDS = [
   "Trường Khách Sơn Hà",
@@ -19,18 +19,25 @@ const POPULAR_KEYWORDS = [
 
 export default function SearchPage() {
   const [query, setQuery] = useState("");
+  const [stories, setStories] = useState<StoryItem[]>([]);
   const [isPending, startTransition] = useTransition();
 
-  const filteredStories = query.trim()
-    ? STORIES_DATA.filter(
-        (s) =>
-          s.title.toLowerCase().includes(query.toLowerCase()) ||
-          s.authorName.toLowerCase().includes(query.toLowerCase()) ||
-          s.authorPenName.toLowerCase().includes(query.toLowerCase()) ||
-          s.genres.some((g) => g.toLowerCase().includes(query.toLowerCase())) ||
-          s.tags.some((t) => t.toLowerCase().includes(query.toLowerCase()))
-      )
-    : [];
+  useEffect(() => {
+    if (!query.trim()) {
+      setStories([]);
+      return;
+    }
+    const controller = new AbortController();
+    fetch(`/api/stories?q=${encodeURIComponent(query.trim())}`, { signal: controller.signal })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => setStories(data?.stories || []))
+      .catch((error) => {
+        if (error.name !== "AbortError") setStories([]);
+      });
+    return () => controller.abort();
+  }, [query]);
+
+  const filteredStories = stories;
 
   const handleClear = () => {
     setQuery("");

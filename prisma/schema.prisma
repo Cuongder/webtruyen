@@ -63,6 +63,7 @@ model User {
   passwordHash  String
   role          Role            @default(READER)
   status        UserStatus      @default(ACTIVE)
+  sessionVersion Int            @default(1)
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 
@@ -78,6 +79,7 @@ model User {
   followedAuthors FollowAuthor[]   @relation("UserFollowedAuthors")
   notifications   Notification[]
   auditLogs       AdminAuditLog[]
+  badges          UserBadge[]
 
   @@index([email])
   @@index([username])
@@ -128,6 +130,7 @@ model Story {
   viewsCount       Int             @default(0)
   followersCount   Int             @default(0)
   ratingScore      Float           @default(5.0)
+  featured         Boolean         @default(false)
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
 
@@ -178,6 +181,33 @@ model Genre {
   description String?
   icon        String?
   stories     StoryGenre[]
+}
+
+model Badge {
+  id          String      @id @default(cuid())
+  name        String
+  code        String      @unique
+  description String
+  icon        String      @default("Sparkles")
+  color       String      @default("#D39A5B")
+  category    String      @default("ACHIEVEMENT")
+  createdAt   DateTime    @default(now())
+
+  users       UserBadge[]
+
+  @@index([name])
+}
+
+model UserBadge {
+  userId      String
+  badgeId     String
+  assignedAt  DateTime @default(now())
+
+  user        User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  badge       Badge @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+
+  @@id([userId, badgeId])
+  @@index([badgeId])
 }
 
 model StoryGenre {

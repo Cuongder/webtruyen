@@ -1,41 +1,40 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getSession } from "@/lib/auth";
-import {
-  getUsersList,
-  createNewUser,
-  type UserItem,
-} from "@/lib/data-store";
+import { hashPassword } from "@/lib/auth";
+import { db } from "@/lib/db";
+import { requireAdminContext, writeAdminAudit } from "@/lib/admin";
+import { serializeAdminUser } from "@/lib/admin-read-model";
 
 export async function GET(req: NextRequest) {
-  const session = await getSession();
-  if (!session || session.role !== "ADMIN") {
-    return NextResponse.json({ error: "Yêu cầu quyền Quản trị viên!" }, { status: 403 });
-  }
+  const context = await requireAdminContext(req);
+  if (context.response) return context.response;
 
   const { searchParams } = new URL(req.url);
-  const search = searchParams.get("q")?.toLowerCase();
+  const search = searchParams.get("q")?.trim();
   const role = searchParams.get("role");
   const status = searchParams.get("status");
-
-  let list = getUsersList();
-
-  if (search) {
-    list = list.filter(
-      (u) =>
-        u.name.toLowerCase().includes(search) ||
-        u.email.toLowerCase().includes(search) ||
-        u.username.toLowerCase().includes(search) ||
-        (u.penName && u.penName.toLowerCase().includes(search))
-    );
-  }
-
-  if (role) {
-    list = list.filter((u) => u.role === role);
-  }
-
-  if (status) {
-    list = list.filter((u) => u.status === status);
-  }
+  const users = await db.user.findMany({
+    where: {
+      ...(search
+        ? {
+            OR: [
+              { email: { contains: search, mode: "insensitive" } },
+              { username: { contains: search, mode: "insensitive" } },
+              { profile: { displayName: { contains: search, mode: "insensitive" } } },
+              { authorProfile: { penName: { contains: search, mode: "insensitive" } } },
+            ],
+          }
+        : {}),
+      ...(role ? { role: role as any } : {}),
+      ...(status ? { status: status as any } : {}),
+    },
+    include: {
+      profile: true,
+      authorProfile: true,
+      badges: { select: { badgeId: true } },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+  const list = users.map(serializeAdminUser);
 
   return NextResponse.json({
     success: true,
@@ -46,10 +45,8 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await getSession();
-    if (!session || session.role !== "ADMIN") {
-      return NextResponse.json({ error: "Yêu cầu quyền Quản trị viên!" }, { status: 403 });
-    }
+    const context = await requireAdminContext(req);
+    if (context.response) return context.response;
 
     const body = await req.json();
     const { email, username, name, role = "READER", penName, bio } = body;
@@ -61,22 +58,50 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const newUser = createNewUser({
-      email,
-      username,
-      name,
-      role: role as UserItem["role"],
-      penName,
-      bio,
+    if (!["READER", "AUTHOR", "ADMIN"].includes(role)) {
+      return NextResponse.json({ error: "Role không hợp lệ!" }, { status: 400 });
+    }
+
+    const password = body.password || process.env.SEED_DEFAULT_USER_PASSWORD;
+    if (!password || password.length < 12) {
+      return NextResponse.json(
+        { error: "Cần truyền password tối thiểu 12 ký tự khi tạo tài khoản." },
+        { status: 400 }
+      );
+    }
+
+    const newUser = await db.user.create({
+      data: {
+        email: email.toLowerCase().trim(),
+        username: username.toLowerCase().trim(),
+        passwordHash: await hashPassword(password),
+        role,
+        profile: { create: { displayName: name, bio: bio || undefined } },
+        ...(role === "AUTHOR"
+          ? { authorProfile: { create: { penName: penName || name, bio: bio || undefined } } }
+          : {}),
+      },
+      include: { profile: true, authorProfile: true, badges: { select: { badgeId: true } } },
+    });
+    const serialized = serializeAdminUser(newUser);
+    await writeAdminAudit({
+      adminId: context.adminId,
+      action: "CREATE_USER",
+      targetType: "USER",
+      targetId: newUser.id,
+      details: { username: newUser.username },
     });
 
     return NextResponse.json({
       success: true,
-      message: `Đã tạo thành công tài khoản "${newUser.name}"!`,
-      user: newUser,
+      message: `Đã tạo thành công tài khoản "${serialized.name}"!`,
+      user: serialized,
     });
   } catch (error) {
     console.error("Create User Error:", error);
+    if (error && typeof error === "object" && "code" in error && error.code === "P2002") {
+      return NextResponse.json({ error: "Email hoặc tên người dùng đã tồn tại." }, { status: 409 });
+    }
     return NextResponse.json({ error: "Lỗi máy chủ khi tạo người dùng!" }, { status: 500 });
   }
 }

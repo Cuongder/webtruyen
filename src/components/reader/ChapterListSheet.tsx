@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { X, Search, ArrowUpDown, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -23,6 +23,31 @@ export function ChapterListSheet({
 }: ChapterListSheetProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [isAscending, setIsAscending] = useState(true);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  // Keyboard Escape handler & body scroll lock
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    // Set initial focus
+    closeButtonRef.current?.focus();
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -38,8 +63,17 @@ export function ChapterListSheet({
     );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-xs transition-opacity animate-in fade-in">
-      <div className="absolute inset-0" onClick={onClose} />
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="chapter-list-title"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-xs transition-opacity animate-in fade-in"
+    >
+      <div
+        className="absolute inset-0"
+        onClick={onClose}
+        aria-hidden="true"
+      />
 
       <div className="relative flex max-h-[80vh] w-full max-w-lg flex-col rounded-t-2xl border-t border-border-accent bg-surface shadow-2xl safe-pb animate-in slide-in-from-bottom duration-200">
         {/* Handle */}
@@ -48,33 +82,41 @@ export function ChapterListSheet({
         {/* Top Header */}
         <div className="flex items-center justify-between px-5 pb-3 border-b border-border-subtle">
           <div>
-            <h3 className="font-sans text-base font-semibold text-ink-primary">
+            <h2 id="chapter-list-title" className="font-sans text-base font-semibold text-ink-primary">
               Mục lục chương
-            </h3>
+            </h2>
             <p className="text-xs text-ink-muted">{chapters.length} chương đã phát hành</p>
           </div>
           <div className="flex items-center gap-1">
             <button
+              type="button"
               onClick={() => setIsAscending(!isAscending)}
-              className="flex items-center gap-1 rounded-lg border border-border-subtle px-2.5 py-1 text-xs font-medium text-ink-secondary hover:text-ink-primary active:scale-95"
+              className="flex min-h-[44px] items-center gap-1 rounded-lg border border-border-subtle px-3 py-1 text-xs font-medium text-ink-secondary hover:text-ink-primary active:scale-95"
             >
-              <ArrowUpDown className="h-3 w-3" />
+              <ArrowUpDown className="h-3.5 w-3.5" />
               <span>{isAscending ? "Cũ nhất" : "Mới nhất"}</span>
             </button>
             <button
+              ref={closeButtonRef}
+              type="button"
               onClick={onClose}
-              className="flex h-8 w-8 items-center justify-center rounded-full text-ink-secondary hover:bg-surface-elevated hover:text-ink-primary"
+              aria-label="Đóng mục lục chương"
+              className="flex h-11 w-11 min-h-[44px] min-w-[44px] items-center justify-center rounded-full text-ink-secondary hover:bg-surface-elevated hover:text-ink-primary active:scale-95"
             >
-              <X className="h-4 w-4" />
+              <X className="h-5 w-5" />
             </button>
           </div>
         </div>
 
         {/* Search */}
         <div className="px-5 py-3">
-          <div className="flex items-center gap-2 rounded-xl border border-border-subtle bg-surface-elevated px-3 py-2 text-xs">
-            <Search className="h-4 w-4 text-ink-muted" />
+          <label htmlFor="chapter-search-input" className="sr-only">
+            Tìm kiếm theo số chương hoặc tiêu đề
+          </label>
+          <div className="flex min-h-[44px] items-center gap-2 rounded-xl border border-border-subtle bg-surface-elevated px-3 py-2 text-xs">
+            <Search className="h-4 w-4 text-ink-muted shrink-0" />
             <input
+              id="chapter-search-input"
               type="text"
               placeholder="Tìm theo số chương hoặc tiêu đề..."
               value={searchQuery}
@@ -86,37 +128,43 @@ export function ChapterListSheet({
 
         {/* Chapter List Scroll Area */}
         <div className="flex-1 overflow-y-auto px-5 divide-y divide-border-subtle/50">
-          {filteredChapters.map((chapter) => {
-            const isCurrent = chapter.chapterNumber === currentChapterNumber;
-            return (
-              <Link
-                key={chapter.id}
-                href={`/story/${storySlug}/chapter/${chapter.slug}`}
-                onClick={onClose}
-                className={cn(
-                  "flex items-center justify-between py-3 transition-colors active:scale-[0.99]",
-                  isCurrent ? "text-accent-gold font-semibold" : "text-ink-primary hover:text-accent-gold"
-                )}
-              >
-                <div className="flex items-center gap-2.5">
-                  <span
-                    className={cn(
-                      "flex h-6 w-6 shrink-0 items-center justify-center rounded text-xs",
-                      isCurrent
-                        ? "bg-accent-gold text-bg-base font-bold"
-                        : "bg-surface-elevated text-ink-muted font-medium"
-                    )}
-                  >
-                    {chapter.chapterNumber}
-                  </span>
-                  <span className="line-clamp-1 text-xs sm:text-sm">
-                    {chapter.title}
-                  </span>
-                </div>
-                {isCurrent && <Check className="h-4 w-4 text-accent-gold shrink-0" />}
-              </Link>
-            );
-          })}
+          {filteredChapters.length === 0 ? (
+            <p className="py-8 text-center text-xs text-ink-muted">
+              Không tìm thấy chương phù hợp với từ khóa.
+            </p>
+          ) : (
+            filteredChapters.map((chapter) => {
+              const isCurrent = chapter.chapterNumber === currentChapterNumber;
+              return (
+                <Link
+                  key={chapter.id}
+                  href={`/story/${storySlug}/chapter/${chapter.slug}`}
+                  onClick={onClose}
+                  className={cn(
+                    "flex min-h-[44px] items-center justify-between py-2.5 transition-colors active:scale-[0.99]",
+                    isCurrent ? "text-accent-gold font-semibold" : "text-ink-primary hover:text-accent-gold"
+                  )}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <span
+                      className={cn(
+                        "flex h-7 w-7 shrink-0 items-center justify-center rounded text-xs",
+                        isCurrent
+                          ? "bg-accent-gold text-bg-base font-bold"
+                          : "bg-surface-elevated text-ink-muted font-medium"
+                      )}
+                    >
+                      {chapter.chapterNumber}
+                    </span>
+                    <span className="line-clamp-1 text-xs sm:text-sm">
+                      {chapter.title}
+                    </span>
+                  </div>
+                  {isCurrent && <Check className="h-4 w-4 text-accent-gold shrink-0" />}
+                </Link>
+              );
+            })
+          )}
         </div>
       </div>
     </div>

@@ -1,19 +1,30 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getSession } from "@/lib/auth";
-import { STORIES_DATA, deleteStory, type StoryItem } from "@/lib/data-store";
+import { canReadStory, canManageStory } from "@/lib/access-control";
+import {
+  deleteStory,
+  findStoryByIdOrSlug,
+  updateStory,
+} from "@/lib/repositories/story.repository";
+import { serializeStory } from "@/lib/story-mapper";
 
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const story = STORIES_DATA.find((s) => s.id === id || s.slug === id);
+  const story = await findStoryByIdOrSlug(id);
 
   if (!story) {
     return NextResponse.json({ error: "Không tìm thấy tác phẩm!" }, { status: 404 });
   }
 
-  return NextResponse.json({ success: true, story });
+  const session = await getSession();
+  if (!canReadStory(story, session)) {
+    return NextResponse.json({ error: "Tác phẩm không công khai." }, { status: 403 });
+  }
+
+  return NextResponse.json({ success: true, story: serializeStory(story) });
 }
 
 export async function PUT(
@@ -27,14 +38,14 @@ export async function PUT(
     }
 
     const { id } = await params;
-    const story = STORIES_DATA.find((s) => s.id === id || s.slug === id);
+    const story = await findStoryByIdOrSlug(id);
 
     if (!story) {
       return NextResponse.json({ error: "Không tìm thấy tác phẩm!" }, { status: 404 });
     }
 
     // Guard: Only story author or admin can update
-    if (session.role !== "ADMIN" && story.authorId !== session.id) {
+    if (!canManageStory(story, session)) {
       return NextResponse.json(
         { error: "Bạn không có quyền chỉnh sửa tác phẩm này!" },
         { status: 403 }
@@ -42,33 +53,48 @@ export async function PUT(
     }
 
     const body = await req.json();
-    const allowedKeys: (keyof StoryItem)[] = [
-      "title",
-      "shortDescription",
-      "fullDescription",
-      "coverUrl",
-      "status",
-      "genres",
-      "tags",
-      "featured",
-    ];
-
-    allowedKeys.forEach((key) => {
-      if (body[key] !== undefined) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (story as any)[key] = body[key];
-      }
+    await updateStory(story.id, {
+      title: typeof body.title === "string" ? body.title.trim() : undefined,
+      shortDescription:
+        typeof body.shortDescription === "string"
+          ? body.shortDescription.trim()
+          : undefined,
+      fullDescription:
+        typeof body.fullDescription === "string" ? body.fullDescription.trim() : undefined,
+      coverUrl: typeof body.coverUrl === "string" ? body.coverUrl.trim() : undefined,
+      bannerUrl: typeof body.bannerUrl === "string" ? body.bannerUrl.trim() : undefined,
+      status:
+        body.status === "ONGOING" ||
+        body.status === "COMPLETED" ||
+        body.status === "DRAFT" ||
+        body.status === "HIATUS"
+          ? body.status
+          : undefined,
+      visibility:
+        body.visibility === "PUBLIC" ||
+        body.visibility === "PRIVATE" ||
+        body.visibility === "UNLISTED"
+          ? body.visibility
+          : undefined,
+      featured: session.role === "ADMIN" && typeof body.featured === "boolean"
+        ? body.featured
+        : undefined,
     });
 
-    story.updatedAt = new Date().toISOString();
-
+    const updated = await findStoryByIdOrSlug(story.id);
+    if (!updated) {
+      return NextResponse.json({ error: "Không tìm thấy tác phẩm sau khi cập nhật!" }, { status: 404 });
+    }
     return NextResponse.json({
       success: true,
       message: "Cập nhật tác phẩm thành công!",
-      story,
+      story: serializeStory(updated),
     });
   } catch (error) {
     console.error("Update story error:", error);
+    if (error && typeof error === "object" && "code" in error && error.code === "P2002") {
+      return NextResponse.json({ error: "Slug truyện đã tồn tại." }, { status: 409 });
+    }
     return NextResponse.json({ error: "Lỗi máy chủ khi cập nhật truyện!" }, { status: 500 });
   }
 }
@@ -84,21 +110,21 @@ export async function DELETE(
     }
 
     const { id } = await params;
-    const story = STORIES_DATA.find((s) => s.id === id || s.slug === id);
+    const story = await findStoryByIdOrSlug(id);
 
     if (!story) {
       return NextResponse.json({ error: "Không tìm thấy tác phẩm!" }, { status: 404 });
     }
 
     // Guard: Only author or admin can delete
-    if (session.role !== "ADMIN" && story.authorId !== session.id) {
+    if (!canManageStory(story, session)) {
       return NextResponse.json(
         { error: "Bạn không có quyền xóa tác phẩm này!" },
         { status: 403 }
       );
     }
 
-    deleteStory(story.id, session.name);
+    await deleteStory(story.id);
 
     return NextResponse.json({
       success: true,
@@ -106,6 +132,9 @@ export async function DELETE(
     });
   } catch (error) {
     console.error("Delete story error:", error);
+    if (error && typeof error === "object" && "code" in error && error.code === "P2025") {
+      return NextResponse.json({ error: "Không tìm thấy tác phẩm!" }, { status: 404 });
+    }
     return NextResponse.json({ error: "Lỗi khi xóa tác phẩm!" }, { status: 500 });
   }
 }

@@ -2,14 +2,12 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { ArrowLeft, BookOpen, Lock, Mail, AlertCircle } from "lucide-react";
+import { Lock, Mail, AlertCircle } from "lucide-react";
 import { siteConfig } from "@/config/site";
 
 export default function LoginPage() {
-  const router = useRouter();
-  const [email, setEmail] = useState("hotprince");
-  const [password, setPassword] = useState("Napoleong112@");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -44,11 +42,6 @@ export default function LoginPage() {
     }
   };
 
-  const setQuickAccount = (demoEmail: string, demoPass: string) => {
-    setEmail(demoEmail);
-    setPassword(demoPass);
-  };
-
   return (
     <div className="flex min-h-screen flex-col justify-center bg-bg-base px-4 py-8 text-ink-primary sm:px-6">
       <div className="mx-auto w-full max-w-sm">
@@ -62,34 +55,6 @@ export default function LoginPage() {
           <h1 className="mt-2 text-sm text-ink-secondary">
             Đăng nhập vào tài khoản độc giả / tác giả
           </h1>
-        </div>
-
-        {/* Demo Fast Login Pills */}
-        <div className="mt-6 rounded-xl border border-border-subtle bg-surface p-3 text-center">
-          <p className="text-[11px] font-medium text-ink-muted">Tài khoản trải nghiệm mẫu:</p>
-          <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
-            <button
-              type="button"
-              onClick={() => setQuickAccount("hotprince", "Napoleong112@")}
-              className="rounded-lg bg-accent-gold/20 px-2.5 py-1 text-[11px] font-bold text-accent-gold border border-accent-gold/40 hover:bg-accent-gold/30 ring-1 ring-accent-gold/50"
-            >
-              👑 Admin hotprince
-            </button>
-            <button
-              type="button"
-              onClick={() => setQuickAccount("author@mocthu.vn", "author123")}
-              className="rounded-lg bg-surface-elevated px-2.5 py-1 text-[11px] font-semibold text-accent-cream border border-border-subtle hover:border-accent-cream"
-            >
-              Tác giả demo
-            </button>
-            <button
-              type="button"
-              onClick={() => setQuickAccount("reader@mocthu.vn", "reader123")}
-              className="rounded-lg bg-surface-elevated px-2.5 py-1 text-[11px] font-semibold text-accent-gold border border-border-subtle hover:border-accent-gold"
-            >
-              Độc giả demo
-            </button>
-          </div>
         </div>
 
         {/* Form Card */}
@@ -115,7 +80,7 @@ export default function LoginPage() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="hotprince hoặc vidu@mocthu.vn"
+                placeholder="vidu@mocthu.vn hoặc tên tài khoản"
                 className="h-10 w-full rounded-xl border border-border-subtle bg-surface-elevated pl-9 pr-3 text-xs text-ink-primary placeholder:text-ink-muted focus:border-accent-gold focus:outline-hidden"
               />
             </div>

@@ -1,21 +1,23 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getSession } from "@/lib/auth";
-import { BADGES_DATA, createNewBadge, type BadgeItem } from "@/lib/data-store";
+import { db } from "@/lib/db";
+import { requireAdminContext, writeAdminAudit } from "@/lib/admin";
+import { serializeAdminBadge } from "@/lib/admin-read-model";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const context = await requireAdminContext(req);
+  if (context.response) return context.response;
+  const badges = await db.badge.findMany({ orderBy: { createdAt: "desc" } });
   return NextResponse.json({
     success: true,
-    total: BADGES_DATA.length,
-    badges: BADGES_DATA,
+    total: badges.length,
+    badges: badges.map(serializeAdminBadge),
   });
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await getSession();
-    if (!session || session.role !== "ADMIN") {
-      return NextResponse.json({ error: "Yêu cầu quyền Quản trị viên!" }, { status: 403 });
-    }
+    const context = await requireAdminContext(req);
+    if (context.response) return context.response;
 
     const body = await req.json();
     const {
@@ -34,29 +36,35 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const exists = BADGES_DATA.find(
-      (b) => b.code.toUpperCase() === code.toUpperCase() || b.name.toLowerCase() === name.toLowerCase()
-    );
+    const normalizedCode = code.toUpperCase().replace(/\s+/g, "_");
+    const exists = await db.badge.findFirst({
+      where: { OR: [{ code: normalizedCode }, { name: { equals: name, mode: "insensitive" } }] },
+    });
     if (exists) {
       return NextResponse.json({ error: "Danh hiệu này đã tồn tại!" }, { status: 400 });
     }
 
-    const newBadge = createNewBadge({
-      name,
-      code: code.toUpperCase().replace(/\s+/g, "_"),
-      description,
-      icon,
-      color,
-      category: category as BadgeItem["category"],
+    const newBadge = await db.badge.create({
+      data: { name, code: normalizedCode, description, icon, color, category },
+    });
+    await writeAdminAudit({
+      adminId: context.adminId,
+      action: "CREATE_BADGE",
+      targetType: "BADGE",
+      targetId: newBadge.id,
+      details: { name: newBadge.name },
     });
 
     return NextResponse.json({
       success: true,
       message: `Đã tạo danh hiệu "${newBadge.name}" thành công!`,
-      badge: newBadge,
+      badge: serializeAdminBadge(newBadge),
     });
   } catch (error) {
     console.error("Create Badge Error:", error);
+    if (error && typeof error === "object" && "code" in error && error.code === "P2002") {
+      return NextResponse.json({ error: "Mã hoặc tên danh hiệu đã tồn tại." }, { status: 409 });
+    }
     return NextResponse.json({ error: "Lỗi máy chủ khi tạo danh hiệu!" }, { status: 500 });
   }
 }

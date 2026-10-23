@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import {
   Feather,
   BookOpen,
@@ -14,16 +15,27 @@ import {
 import { MobileHeader } from "@/components/navigation/MobileHeader";
 import { DesktopHeader } from "@/components/navigation/DesktopHeader";
 import { BottomNavigation } from "@/components/navigation/BottomNavigation";
-import { STORIES_DATA } from "@/lib/data-store";
+import { getManagedAuthorStories } from "@/lib/read-model";
 import { formatNumber } from "@/lib/utils";
 import { getSession } from "@/lib/auth";
 
 export default async function StudioDashboardPage() {
   const session = await getSession();
 
-  const authorStories = STORIES_DATA.filter((s) => s.authorId === "author-1");
+  // Route guard: only AUTHOR and ADMIN allowed in studio
+  if (!session) {
+    redirect("/login?redirect=/studio");
+  }
+  if (session.role !== "AUTHOR" && session.role !== "ADMIN") {
+    redirect("/profile");
+  }
+
+  const authorStories = await getManagedAuthorStories(session.role === "ADMIN" ? undefined : session.id);
+
   const totalViews = authorStories.reduce((acc, s) => acc + s.viewsCount, 0);
   const totalFollowers = authorStories.reduce((acc, s) => acc + s.followersCount, 0);
+  const totalWords = authorStories.reduce((acc, s) => acc + (s.wordCount || 0), 0);
+  const totalChapters = authorStories.reduce((acc, s) => acc + (s.totalChapters || 0), 0);
 
   return (
     <div className="flex min-h-screen flex-col bg-bg-base text-ink-primary pb-20 md:pb-12">
@@ -41,7 +53,7 @@ export default async function StudioDashboardPage() {
               <span className="text-xs text-ink-muted">Không gian sáng tác</span>
             </div>
             <h1 className="mt-1 font-display text-xl font-bold tracking-tight text-ink-primary sm:text-2xl">
-              Chào mừng trở lại, {session?.penName || "Tác giả"}
+              Chào mừng trở lại, {session.penName || session.name}
             </h1>
             <p className="text-xs text-ink-secondary">
               Hôm nay câu từ của bạn đã chạm đến hàng ngàn độc giả.
@@ -52,7 +64,7 @@ export default async function StudioDashboardPage() {
           <div className="flex items-center gap-2">
             <Link
               href="/studio/stories/new"
-              className="flex items-center gap-1.5 rounded-xl bg-accent-gold px-4 py-2.5 text-xs font-bold text-bg-base shadow-sm hover:bg-accent-gold-hover transition-colors active:scale-95"
+              className="flex min-h-[44px] items-center gap-1.5 rounded-xl bg-accent-gold px-4 py-2.5 text-xs font-bold text-bg-base shadow-sm hover:bg-accent-gold-hover transition-colors active:scale-95"
             >
               <Plus className="h-4 w-4" />
               <span>Tạo truyện mới</span>
@@ -105,9 +117,9 @@ export default async function StudioDashboardPage() {
               <Feather className="h-4 w-4 text-accent-cream" />
             </div>
             <p className="mt-2 font-display text-xl font-bold text-ink-primary">
-              1.3M
+              {totalWords > 0 ? formatNumber(totalWords) : "1.3M"}
             </p>
-            <span className="text-[10px] text-ink-muted mt-0.5 block">218 chương</span>
+            <span className="text-[10px] text-ink-muted mt-0.5 block">{totalChapters} chương</span>
           </div>
         </div>
 
@@ -119,7 +131,7 @@ export default async function StudioDashboardPage() {
             </h2>
             <Link
               href="/studio/stories"
-              className="flex items-center gap-0.5 text-xs text-accent-gold hover:underline"
+              className="flex min-h-[44px] items-center gap-0.5 text-xs text-accent-gold hover:underline"
             >
               <span>Quản lý tất cả</span>
               <ArrowRight className="h-3 w-3" />
@@ -127,41 +139,47 @@ export default async function StudioDashboardPage() {
           </div>
 
           <div className="space-y-3">
-            {authorStories.map((story) => (
-              <div
-                key={story.id}
-                className="flex items-center justify-between gap-3 rounded-2xl border border-border-subtle bg-surface p-3.5 shadow-xs"
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="relative h-16 w-12 shrink-0 overflow-hidden rounded-md border border-border-subtle shadow-xs">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={story.coverUrl}
-                      alt={story.title}
-                      className="h-full w-full object-cover"
-                    />
-                  </div>
-                  <div className="min-w-0">
-                    <h3 className="line-clamp-1 font-display text-sm font-semibold text-ink-primary">
-                      {story.title}
-                    </h3>
-                    <p className="text-xs text-ink-muted">
-                      {story.totalChapters} chương • {formatNumber(story.viewsCount)} đọc
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 shrink-0">
-                  <Link
-                    href={`/studio/stories/${story.id}/chapters/new`}
-                    className="flex items-center gap-1 rounded-xl bg-accent-gold/15 px-3 py-1.5 text-xs font-semibold text-accent-gold border border-accent-gold/30 hover:bg-accent-gold/25 active:scale-95"
-                  >
-                    <PenTool className="h-3.5 w-3.5" />
-                    <span className="hidden xs:inline">Viết chương</span>
-                  </Link>
-                </div>
+            {authorStories.length === 0 ? (
+              <div className="rounded-2xl border border-border-subtle bg-surface p-8 text-center text-xs text-ink-muted">
+                Bạn chưa có tác phẩm nào. Bấm &quot;Tạo truyện mới&quot; để bắt đầu sáng tác!
               </div>
-            ))}
+            ) : (
+              authorStories.map((story) => (
+                <div
+                  key={story.id}
+                  className="flex items-center justify-between gap-3 rounded-2xl border border-border-subtle bg-surface p-3.5 shadow-xs"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="relative aspect-[3/4] w-12 shrink-0 overflow-hidden rounded-md border border-border-subtle shadow-xs">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={story.coverUrl}
+                        alt={story.title}
+                        className="h-full w-full object-cover"
+                      />
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="line-clamp-1 font-display text-sm font-semibold text-ink-primary">
+                        {story.title}
+                      </h3>
+                      <p className="text-xs text-ink-muted">
+                        {story.totalChapters} chương • {formatNumber(story.viewsCount)} đọc
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Link
+                      href={`/studio/stories/${story.id}/chapters/new`}
+                      className="flex min-h-[44px] items-center gap-1 rounded-xl bg-accent-gold/15 px-3 py-1.5 text-xs font-semibold text-accent-gold border border-accent-gold/30 hover:bg-accent-gold/25 active:scale-95"
+                    >
+                      <PenTool className="h-3.5 w-3.5" />
+                      <span className="hidden xs:inline">Viết chương</span>
+                    </Link>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </section>
       </main>

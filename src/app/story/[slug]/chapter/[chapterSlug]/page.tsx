@@ -1,6 +1,12 @@
 import { notFound } from "next/navigation";
-import { STORIES_DATA, CHAPTERS_DATA } from "@/lib/data-store";
+import { findChapterByIdOrSlug } from "@/lib/repositories/chapter.repository";
+import { getPublicStory } from "@/lib/read-model";
+import { getSession } from "@/lib/auth";
+import { canReadChapter } from "@/lib/access-control";
+import { serializeChapter } from "@/lib/story-mapper";
 import { ReaderCanvas } from "@/components/reader/ReaderCanvas";
+
+export const dynamic = "force-dynamic";
 
 interface ChapterReaderPageProps {
   params: Promise<{
@@ -12,12 +18,13 @@ interface ChapterReaderPageProps {
 export default async function ChapterReaderPage({ params }: ChapterReaderPageProps) {
   const { slug, chapterSlug } = await params;
 
-  const story = STORIES_DATA.find((s) => s.slug === slug);
-  if (!story) {
+  const publicStory = await getPublicStory(slug);
+  if (!publicStory) {
     notFound();
   }
 
-  const allChapters = CHAPTERS_DATA[slug] || [];
+  const story = publicStory.story;
+  const allChapters = publicStory.chapters;
   const currentChapterIndex = allChapters.findIndex(
     (c) => c.slug === chapterSlug || c.chapterNumber.toString() === chapterSlug
   );
@@ -26,7 +33,13 @@ export default async function ChapterReaderPage({ params }: ChapterReaderPagePro
     notFound();
   }
 
-  const chapter = allChapters[currentChapterIndex];
+  const chapterSummary = allChapters[currentChapterIndex];
+  const session = await getSession();
+  const dbChapter = await findChapterByIdOrSlug(chapterSummary.id);
+  if (!dbChapter || !canReadChapter(dbChapter, dbChapter.story, session)) {
+    notFound();
+  }
+  const chapter = serializeChapter(dbChapter);
   const prevChapter =
     currentChapterIndex > 0 ? allChapters[currentChapterIndex - 1] : null;
   const nextChapter =

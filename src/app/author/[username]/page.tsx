@@ -4,10 +4,12 @@ import { MobileHeader } from "@/components/navigation/MobileHeader";
 import { DesktopHeader } from "@/components/navigation/DesktopHeader";
 import { BottomNavigation } from "@/components/navigation/BottomNavigation";
 import { StoryCardMobile } from "@/components/story/StoryCardMobile";
-import { STORIES_DATA } from "@/lib/data-store";
 import { formatNumber } from "@/lib/utils";
 import { getSession } from "@/lib/auth";
 import { FollowAuthorButton } from "@/components/story/StoryActions";
+import { userRepository } from "@/lib/repositories";
+import { getAuthorStories } from "@/lib/read-model";
+import { notFound } from "next/navigation";
 
 interface AuthorProfilePageProps {
   params: Promise<{ username: string }>;
@@ -17,14 +19,12 @@ export default async function AuthorProfilePage({ params }: AuthorProfilePagePro
   const { username } = await params;
   const session = await getSession();
 
-  // Find author from stories
-  const authorStories = STORIES_DATA.filter(
-    (s) => s.authorId === username || s.slug === username || s.authorName.toLowerCase().includes(username.toLowerCase())
-  );
-  const sampleStory = authorStories[0] || STORIES_DATA[0];
-
-  const authorName = sampleStory.authorPenName || sampleStory.authorName;
+  const author = await userRepository.findUserByUsername(username);
+  if (!author || !author.authorProfile) notFound();
+  const authorStories = await getAuthorStories(author.id);
+  const authorName = author.authorProfile.penName || author.profile?.displayName || author.username;
   const totalViews = authorStories.reduce((acc, s) => acc + s.viewsCount, 0);
+  const avatarUrl = author.authorProfile.avatarUrl || author.profile?.avatarUrl || "";
 
   return (
     <div className="flex min-h-screen flex-col bg-bg-base text-ink-primary pb-20 md:pb-12">
@@ -52,7 +52,7 @@ export default async function AuthorProfilePage({ params }: AuthorProfilePagePro
                 <div className="h-24 w-24 overflow-hidden rounded-2xl border-4 border-surface bg-surface-elevated shadow-lg ring-1 ring-accent-gold/30">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src={sampleStory.authorAvatar}
+                    src={avatarUrl}
                     alt={authorName}
                     className="h-full w-full object-cover"
                   />
@@ -72,13 +72,13 @@ export default async function AuthorProfilePage({ params }: AuthorProfilePagePro
 
               {/* Follow Button */}
               <div className="mt-3 sm:mt-0">
-                <FollowAuthorButton authorName={authorName} />
+                <FollowAuthorButton authorName={authorName} authorId={author.authorProfile.id} />
               </div>
             </div>
 
             {/* Bio */}
             <p className="font-reading text-xs leading-relaxed text-ink-secondary sm:text-sm">
-              &quot;Lấy câu từ làm đò chở đạo, dùng kiếm ý tạc bóng nhân sinh. Mỗi chương truyện là một đêm thức trắng cùng trà hoa và mực tàu thơm ngát.&quot;
+              &quot;{author.authorProfile.bio || author.profile?.bio || "Tác giả Mộc Thư."}&quot;
             </p>
 
             {/* Author Stats Bar */}
@@ -92,7 +92,7 @@ export default async function AuthorProfilePage({ params }: AuthorProfilePagePro
                 <span className="text-ink-muted">Lượt đọc</span>
               </div>
               <div>
-                <span className="font-bold text-ink-primary">48.2k</span>{" "}
+                  <span className="font-bold text-ink-primary">{formatNumber(author.authorProfile.followerCount)}</span>{" "}
                 <span className="text-ink-muted">Độc giả theo dõi</span>
               </div>
             </div>
